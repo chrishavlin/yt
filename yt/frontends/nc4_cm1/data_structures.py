@@ -13,6 +13,9 @@ Skeleton data structures
 # The full license is in the file COPYING.txt, distributed with this software.
 #-----------------------------------------------------------------------------
 
+## Written by Kelton Halbert and Leigh Orf at the 2019 yt developers workshop @ NCSA
+## for the purpose of reading in George Bryan's Cloud Model 1 output for plotting in yt.
+
 import os
 import numpy as np
 import weakref
@@ -54,6 +57,10 @@ class CM1Hierarchy(GridIndex):
         self.float_type = np.float64
         super(CM1Hierarchy, self).__init__(ds, dataset_type)
 
+    def _initialize_state_variables(self):
+        super(CM1Hierarchy, self)._initialize_state_variables()
+        self.num_grids = 1
+
     def _detect_output_fields(self):
         # This needs to set a self.field_list that contains all the available,
         # on-disk fields. No derived fields should be defined here.
@@ -61,11 +68,18 @@ class CM1Hierarchy(GridIndex):
         # fluid type or particle type.  Convention suggests that the on-disk
         # fluid type is usually the dataset_type and the on-disk particle type
         # (for a single population of particles) is "io".
-        pass
+	self.field_list = []
+		
+	## loop over the variable names in the netCDF file
+	for key in self.ds._handle.variables.keys():
+	    ## 
+	    if all(x in self.ds._handle[key].dims for x in ['time', 'zh', 'yh', 'xh']) is True:
+	        field_tup = ('cm1', key)
+		self.field_list.append(field_tup)
 
     def _count_grids(self):
         # This needs to set self.num_grids
-        pass
+	self.num_grids = 1
 
     def _parse_index(self):
         # This needs to fill the following arrays, where N is self.num_grids:
@@ -76,7 +90,13 @@ class CM1Hierarchy(GridIndex):
         #   self.grid_levels            (N, 1) <= int
         #   self.grids                  (N, 1) <= grid objects
         #   self.max_level = self.grid_levels.max()
-        pass
+	self.grid_left_edge[0][:] = self.ds.domain_left_edge[:]
+	self.grid_right_edge[0][:] = self.ds.domain_right_edge[:]
+	self.grid_dimensions[0][:] = self.ds.domain_dimensions[:]
+	self.grid_particle_count[0][0] = 0
+	self.grid_levels[0][0] = 1
+	self.max_level = 1
+
 
     def _populate_grid_objects(self):
         # For each grid g, this must call:
@@ -87,7 +107,12 @@ class CM1Hierarchy(GridIndex):
         #   g.Parent   <= parent grid
         # This is handled by the frontend because often the children must be
         # identified.
-        pass
+	self.grids = np.empty(self.num_grids, dtype='object')
+	for i in range(self.num_grids):
+	    g = self.grid(i, self, self.grid_levels.flat[i], self.grid_dimensions[i])
+	    g._prepare_grid()
+	    g._setup_dt()
+	    self.grids[i] = g
 
 
 class CM1Dataset(Dataset):
