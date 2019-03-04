@@ -14,12 +14,12 @@ API for yt.frontends.nc4_cm1
 #-----------------------------------------------------------------------------
 
 from .data_structures import \
-      SkeletonGrid, \
-      SkeletonHierarchy, \
-      SkeletonDataset
+      CM1Grid, \
+      CM1Hierarchy, \
+      CM1Dataset
 
 from .fields import \
-      SkeletonFieldInfo
+      CM1FieldInfo
 
 from .io import \
-      SkeletonIOHandler
+      CM1IOHandler
