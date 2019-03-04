@@ -50,17 +50,17 @@ class CM1IOHandler(BaseIOHandler):
         # transpose is required (e.g., using np_array.transpose() or
         # np_array.swapaxes(0,2)).
 
-	data = {}
-	offset = 0
-	for field in fields:
-	    data[field] = np.empty(size, dtype='float64')
-	    for chunk in chunks:
-	        for grid in chunk.objs:
-		    ds = self.ds._handle
-		    variable = ds.variables[field[1]]
-		    values = variable.values
-		    offset += grid.select(selector, values, data[field], offset)
-	return rv
+	    data = {}
+	    offset = 0
+	    for field in fields:
+	        data[field] = np.empty(size, dtype='float64')
+	        for chunk in chunks:
+	            for grid in chunk.objs:
+		            ds = self.ds._handle
+		            variable = ds.variables[field[1]]
+		            values = variable.values
+		            offset += grid.select(selector, values, data[field], offset)
+	     return rv
 	
     def _read_chunk_data(self, chunk, fields):
         # This reads the data from a single chunk without doing any selection,

@@ -68,18 +68,18 @@ class CM1Hierarchy(GridIndex):
         # fluid type or particle type.  Convention suggests that the on-disk
         # fluid type is usually the dataset_type and the on-disk particle type
         # (for a single population of particles) is "io".
-	self.field_list = []
-		
-	## loop over the variable names in the netCDF file
-	for key in self.ds._handle.variables.keys():
-	    ## 
-	    if all(x in self.ds._handle[key].dims for x in ['time', 'zh', 'yh', 'xh']) is True:
-	        field_tup = ('cm1', key)
-		self.field_list.append(field_tup)
+        self.field_list = []
+        
+    ## loop over the variable names in the netCDF file
+    for key in self.ds._handle.variables.keys():
+        ## 
+        if all(x in self.ds._handle[key].dims for x in ['time', 'zh', 'yh', 'xh']) is True:
+            field_tup = ('cm1', key)
+        self.field_list.append(field_tup)
 
     def _count_grids(self):
         # This needs to set self.num_grids
-	self.num_grids = 1
+        self.num_grids = 1
 
     def _parse_index(self):
         # This needs to fill the following arrays, where N is self.num_grids:
@@ -90,12 +90,12 @@ class CM1Hierarchy(GridIndex):
         #   self.grid_levels            (N, 1) <= int
         #   self.grids                  (N, 1) <= grid objects
         #   self.max_level = self.grid_levels.max()
-	self.grid_left_edge[0][:] = self.ds.domain_left_edge[:]
-	self.grid_right_edge[0][:] = self.ds.domain_right_edge[:]
-	self.grid_dimensions[0][:] = self.ds.domain_dimensions[:]
-	self.grid_particle_count[0][0] = 0
-	self.grid_levels[0][0] = 1
-	self.max_level = 1
+        self.grid_left_edge[0][:] = self.ds.domain_left_edge[:]
+        self.grid_right_edge[0][:] = self.ds.domain_right_edge[:]
+        self.grid_dimensions[0][:] = self.ds.domain_dimensions[:]
+        self.grid_particle_count[0][0] = 0
+        self.grid_levels[0][0] = 1
+        self.max_level = 1
 
 
     def _populate_grid_objects(self):
@@ -107,12 +107,12 @@ class CM1Hierarchy(GridIndex):
         #   g.Parent   <= parent grid
         # This is handled by the frontend because often the children must be
         # identified.
-	self.grids = np.empty(self.num_grids, dtype='object')
-	for i in range(self.num_grids):
-	    g = self.grid(i, self, self.grid_levels.flat[i], self.grid_dimensions[i])
-	    g._prepare_grid()
-	    g._setup_dt()
-	    self.grids[i] = g
+        self.grids = np.empty(self.num_grids, dtype='object')
+        for i in range(self.num_grids):
+            g = self.grid(i, self, self.grid_levels.flat[i], self.grid_dimensions[i])
+            g._prepare_grid()
+            g._setup_dt()
+            self.grids[i] = g
 
 
 class CM1Dataset(Dataset):
@@ -123,9 +123,9 @@ class CM1Dataset(Dataset):
                  storage_filename=None,
                  units_override=None):
         self.fluid_types += ('cm1',)
-	self._handle = xarray.open_mfdataset(filename)
+        self._handle = xarray.open_mfdataset(filename)
         # refinement factor between a grid and its subgrid
-	self.refine_by = 2
+        self.refine_by = 2
         super(CM1Dataset, self).__init__(filename, dataset_type,
                          units_override=units_override)
         self.storage_filename = storage_filename
@@ -148,7 +148,7 @@ class CM1Dataset(Dataset):
         self.length_unit = self.quan(1.0, length_unit)
         self.mass_unit = self.quan(1.0, "kg")
         self.time_unit = self.quan(1.0, "s")
-	self.velocity_unit = self.quan(1.0, "m/s")
+        self.velocity_unit = self.quan(1.0, "m/s")
 
     def _parse_parameter_file(self):
         # This needs to set up the following items.  Note that these are all
@@ -158,30 +158,30 @@ class CM1Dataset(Dataset):
         #
         #   self.unique_identifier      <= unique identifier for the dataset
         #                                  being read (e.g., UUID or ST_CTIME)
-	self.unique_identifier = int(os.stat(self.parameter_filename)[stat.ST_CTIME])
+        self.unique_identifier = int(os.stat(self.parameter_filename)[stat.ST_CTIME])
         #   self.parameters             <= full of code-specific items of use
-	self.parameters = {}
-	coords = self._handle.coords
-	# TO DO: Possibly figure out a way to generalize this to be coordiante variable name
-	# agnostic in order to make useful for WRF or climate data. For now, we're hard coding
-	# for CM1 specifically and have named the classes appropriately, but generalizing is good.
-	xh, yh, zh = [coords[i] for i in ["xh", "yh", "zh"]]
+        self.parameters = {}
+        coords = self._handle.coords
+        # TO DO: Possibly figure out a way to generalize this to be coordiante variable name
+        # agnostic in order to make useful for WRF or climate data. For now, we're hard coding
+        # for CM1 specifically and have named the classes appropriately, but generalizing is good.
+        xh, yh, zh = [coords[i] for i in ["xh", "yh", "zh"]]
         #   self.domain_left_edge       <= array of float64
-	self.domain_left_edge = np.array([xh.min(), yh.min(), zh.min()])
+        self.domain_left_edge = np.array([xh.min(), yh.min(), zh.min()])
         #   self.domain_right_edge      <= array of float64
-	self.domain_right_edge = np.array([xh.max(), yh.max(), zh.max()])
+        self.domain_right_edge = np.array([xh.max(), yh.max(), zh.max()])
         #   self.dimensionality         <= int
-	self.dimensionality = 3
+        self.dimensionality = 3
         #   self.domain_dimensions      <= array of int64
-	dims = [self._handle.dims[i] for i in ["xh", "yh", "zh"]]
-	self.domain_dimensions = np.array(dims, dtype='int64')
+        dims = [self._handle.dims[i] for i in ["xh", "yh", "zh"]]
+        self.domain_dimensions = np.array(dims, dtype='int64')
         #   self.periodicity            <= three-element tuple of booleans
-	self.periodicicity = (False, False, False)
+        self.periodicicity = (False, False, False)
         #   self.current_time           <= simulation time in code units
-	self.current_time = self._handle.time.values
+        self.current_time = self._handle.time.values
         # We also set up cosmological information.  Set these to zero if
         # non-cosmological.
-	self.cosmological_simulation = 0.0
+        self.cosmological_simulation = 0.0
         self.current_redshift = 0.0
         self.omega_lambda = 0.0
         self.omega_matter = 0.0
@@ -191,6 +191,7 @@ class CM1Dataset(Dataset):
     def _is_valid(self, *args, **kwargs):
         # This accepts a filename or a set of arguments and returns True or
         # False depending on if the file is of the type requested.
+        print("I'm checking the cm1 reader!")
         try:
             import xarray
         except ImportError:
