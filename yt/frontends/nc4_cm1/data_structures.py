@@ -150,4 +150,22 @@ class CM1Dataset(Dataset):
     def _is_valid(self, *args, **kwargs):
         # This accepts a filename or a set of arguments and returns True or
         # False depending on if the file is of the type requested.
+        try:
+            import xarray
+        except ImportError:
+            return False
+
+        try:
+            ds = xarray.open_dataset(args[0])
+        except (FileNotFoundError, OSError):
+            return False
+
+        try:
+            variables = ds.variables.keys()
+        except KeyError:
+            return False
+
+        if 'xh' in variables:
+            return True
+
         return False
