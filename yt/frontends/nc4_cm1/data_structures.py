@@ -70,12 +70,12 @@ class CM1Hierarchy(GridIndex):
         # (for a single population of particles) is "io".
         self.field_list = []
         
-    ## loop over the variable names in the netCDF file
-    for key in self.ds._handle.variables.keys():
-        ## 
-        if all(x in self.ds._handle[key].dims for x in ['time', 'zh', 'yh', 'xh']) is True:
-            field_tup = ('cm1', key)
-        self.field_list.append(field_tup)
+        ## loop over the variable names in the netCDF file
+        for key in self.ds._handle.variables.keys():
+            ## 
+            if all(x in self.ds._handle[key].dims for x in ['time', 'zh', 'yh', 'xh']) is True:
+                field_tup = ('cm1', key)
+            self.field_list.append(field_tup)
 
     def _count_grids(self):
         # This needs to set self.num_grids
