@@ -123,7 +123,7 @@ class CM1Dataset(Dataset):
                  storage_filename=None,
                  units_override=None):
         self.fluid_types += ('cm1',)
-	self._handle = xarray.open_dataset(filename)
+	self._handle = xarray.open_mfdataset(filename)
         # refinement factor between a grid and its subgrid
 	self.refine_by = 2
         super(CM1Dataset, self).__init__(filename, dataset_type,
