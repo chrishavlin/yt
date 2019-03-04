@@ -60,7 +60,7 @@ class CM1IOHandler(BaseIOHandler):
 		            variable = ds.variables[field[1]]
 		            values = variable.values
 		            offset += grid.select(selector, values, data[field], offset)
-	     return rv
+        return data
 	
     def _read_chunk_data(self, chunk, fields):
         # This reads the data from a single chunk without doing any selection,
