@@ -98,11 +98,12 @@ class CM1Dataset(Dataset):
                  storage_filename=None,
                  units_override=None):
         self.fluid_types += ('cm1',)
+	self._handle = xarray.open_dataset(filename)
+        # refinement factor between a grid and its subgrid
+	self.refine_by = 2
         super(CM1Dataset, self).__init__(filename, dataset_type,
                          units_override=units_override)
         self.storage_filename = storage_filename
-        # refinement factor between a grid and its subgrid
-        # self.refine_by = 2
 
     def _set_code_unit_attributes(self):
         # This is where quantities are created that represent the various
@@ -118,7 +119,10 @@ class CM1Dataset(Dataset):
         # These can also be set:
         # self.velocity_unit = self.quan(1.0, "cm/s")
         # self.magnetic_unit = self.quan(1.0, "gauss")
-        pass
+        length_unit = self._handle.variables['xh'].attrs['units']
+        self.length_unit = self.quan(1.0, length_unit)
+        self.mass_unit = self.quan(1.0, "kg")
+        self.time_unit = self.quan(1.0, "s")
 
     def _parse_parameter_file(self):
         # This needs to set up the following items.  Note that these are all
@@ -128,23 +132,31 @@ class CM1Dataset(Dataset):
         #
         #   self.unique_identifier      <= unique identifier for the dataset
         #                                  being read (e.g., UUID or ST_CTIME)
+	self.unique_identifier = int(os.stat(self.parameter_filename)[stat.ST_CTIME])
         #   self.parameters             <= full of code-specific items of use
+	self.parameters = {}
+	coords = self._handle.coords
+	xh, yh, zh = [coords[i] for i in ["xh", "yh", "zh"]]
         #   self.domain_left_edge       <= array of float64
+	self.domain_left_edge = np.array([xh.min(), yh.min(), zh.min()])
         #   self.domain_right_edge      <= array of float64
+	self.domain_right_edge = np.array([xh.max(), yh.max(), zh.max()])
         #   self.dimensionality         <= int
+	self.dimensionality = 3
         #   self.domain_dimensions      <= array of int64
+	dims = [self._handle.dims[i] for i in ["xh", "yh", "zh"]]
+	self.domain_dimensions = np.array(dims, dtype='int64')
         #   self.periodicity            <= three-element tuple of booleans
+	self.periodicicity = (False, False, False)
         #   self.current_time           <= simulation time in code units
-        #
+	self.current_time = self._handle.time.values
         # We also set up cosmological information.  Set these to zero if
         # non-cosmological.
-        #
-        #   self.cosmological_simulation    <= int, 0 or 1
-        #   self.current_redshift           <= float
-        #   self.omega_lambda               <= float
-        #   self.omega_matter               <= float
-        #   self.hubble_constant            <= float
-        pass
+	self.cosmological_simulation = 0.0
+        self.current_redshift = 0.0
+        self.omega_lambda = 0.0
+        self.omega_matter = 0.0
+        self.hubble_constant = 0.0
 
     @classmethod
     def _is_valid(self, *args, **kwargs):
