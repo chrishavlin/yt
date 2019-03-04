@@ -16,6 +16,7 @@ Skeleton data structures
 import os
 import numpy as np
 import weakref
+import xarray
 
 from yt.data_objects.grid_patch import \
     AMRGridPatch
@@ -23,27 +24,27 @@ from yt.geometry.grid_geometry_handler import \
     GridIndex
 from yt.data_objects.static_output import \
     Dataset
-from .fields import SkeletonFieldInfo
+from .fields import CM1FieldInfo
 
 
-class SkeletonGrid(AMRGridPatch):
+class CM1Grid(AMRGridPatch):
     _id_offset = 0
 
     def __init__(self, id, index, level):
-        super(SkeletonGrid, self).__init__(
+        super(CM1Grid, self).__init__(
             id, filename=index.index_filename, index=index)
         self.Parent = None
         self.Children = []
         self.Level = level
 
     def __repr__(self):
-        return "SkeletonGrid_%04i (%s)" % (self.id, self.ActiveDimensions)
+        return "CM1Grid_%04i (%s)" % (self.id, self.ActiveDimensions)
 
 
-class SkeletonHierarchy(GridIndex):
-    grid = SkeletonGrid
+class CM1Hierarchy(GridIndex):
+    grid = CM1Grid
 
-    def __init__(self, ds, dataset_type='skeleton'):
+    def __init__(self, ds, dataset_type='cm1'):
         self.dataset_type = dataset_type
         self.dataset = weakref.proxy(ds)
         # for now, the index file is the dataset!
@@ -51,7 +52,7 @@ class SkeletonHierarchy(GridIndex):
         self.directory = os.path.dirname(self.index_filename)
         # float type for the simulation edges and must be float64 now
         self.float_type = np.float64
-        super(SkeletonHierarchy, self).__init__(ds, dataset_type)
+        super(CM1Hierarchy, self).__init__(ds, dataset_type)
 
     def _detect_output_fields(self):
         # This needs to set a self.field_list that contains all the available,
@@ -89,15 +90,15 @@ class SkeletonHierarchy(GridIndex):
         pass
 
 
-class SkeletonDataset(Dataset):
-    _index_class = SkeletonHierarchy
-    _field_info_class = SkeletonFieldInfo
+class CM1Dataset(Dataset):
+    _index_class = CM1Hierarchy
+    _field_info_class = CM1FieldInfo
 
-    def __init__(self, filename, dataset_type='skeleton',
+    def __init__(self, filename, dataset_type='cm1',
                  storage_filename=None,
                  units_override=None):
-        self.fluid_types += ('skeleton',)
-        super(SkeletonDataset, self).__init__(filename, dataset_type,
+        self.fluid_types += ('cm1',)
+        super(CM1Dataset, self).__init__(filename, dataset_type,
                          units_override=units_override)
         self.storage_filename = storage_filename
         # refinement factor between a grid and its subgrid

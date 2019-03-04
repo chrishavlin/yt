@@ -21,7 +21,7 @@ from yt.fields.field_info_container import \
 # optionally methods on it that get called which can be subclassed.
 
 
-class SkeletonFieldInfo(FieldInfoContainer):
+class CM1FieldInfo(FieldInfoContainer):
     known_other_fields = (
         # Each entry here is of the form
         # ( "name", ("units", ["fields", "to", "alias"], # "display_name")),
