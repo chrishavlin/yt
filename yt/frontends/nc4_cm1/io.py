@@ -15,6 +15,8 @@ Skeleton-specific IO functions
 
 from yt.utilities.io_handler import \
     BaseIOHandler
+import numpy as np
+
 
 
 class CM1IOHandler(BaseIOHandler):
@@ -58,7 +60,7 @@ class CM1IOHandler(BaseIOHandler):
                 for grid in chunk.objs:
                     ds = self.ds._handle
                     variable = ds.variables[field[1]]
-                    values = variable.values
+                    values = np.squeeze(variable.values.T)
                     offset += grid.select(selector, values, data[field], offset)
         return data
     

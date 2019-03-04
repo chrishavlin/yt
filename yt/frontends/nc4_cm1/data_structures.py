@@ -17,6 +17,7 @@ Skeleton data structures
 ## for the purpose of reading in George Bryan's Cloud Model 1 output for plotting in yt.
 
 import os
+import stat
 import numpy as np
 import weakref
 import xarray
@@ -28,17 +29,19 @@ from yt.geometry.grid_geometry_handler import \
 from yt.data_objects.static_output import \
     Dataset
 from .fields import CM1FieldInfo
+from yt.geometry.coordinates.cartesian_coordinates import CartesianCoordinateHandler
 
 
 class CM1Grid(AMRGridPatch):
     _id_offset = 0
 
-    def __init__(self, id, index, level):
+    def __init__(self, id, index, level, dimensions):
         super(CM1Grid, self).__init__(
             id, filename=index.index_filename, index=index)
         self.Parent = None
         self.Children = []
         self.Level = level
+        self.ActiveDimensions = dimensions
 
     def __repr__(self):
         return "CM1Grid_%04i (%s)" % (self.id, self.ActiveDimensions)
@@ -75,7 +78,7 @@ class CM1Hierarchy(GridIndex):
             ## 
             if all(x in self.ds._handle[key].dims for x in ['time', 'zh', 'yh', 'xh']) is True:
                 field_tup = ('cm1', key)
-            self.field_list.append(field_tup)
+                self.field_list.append(field_tup)
 
     def _count_grids(self):
         # This needs to set self.num_grids
@@ -111,7 +114,7 @@ class CM1Hierarchy(GridIndex):
         for i in range(self.num_grids):
             g = self.grid(i, self, self.grid_levels.flat[i], self.grid_dimensions[i])
             g._prepare_grid()
-            g._setup_dt()
+            g._setup_dx()
             self.grids[i] = g
 
 
@@ -167,16 +170,16 @@ class CM1Dataset(Dataset):
         # for CM1 specifically and have named the classes appropriately, but generalizing is good.
         xh, yh, zh = [coords[i] for i in ["xh", "yh", "zh"]]
         #   self.domain_left_edge       <= array of float64
-        self.domain_left_edge = np.array([xh.min(), yh.min(), zh.min()])
+        self.domain_left_edge = np.array([xh.min(), yh.min(), zh.min()], dtype='float64')
         #   self.domain_right_edge      <= array of float64
-        self.domain_right_edge = np.array([xh.max(), yh.max(), zh.max()])
+        self.domain_right_edge = np.array([xh.max(), yh.max(), zh.max()], dtype='float64')
         #   self.dimensionality         <= int
         self.dimensionality = 3
         #   self.domain_dimensions      <= array of int64
         dims = [self._handle.dims[i] for i in ["xh", "yh", "zh"]]
         self.domain_dimensions = np.array(dims, dtype='int64')
         #   self.periodicity            <= three-element tuple of booleans
-        self.periodicicity = (False, False, False)
+        self.periodicity = (False, False, False)
         #   self.current_time           <= simulation time in code units
         self.current_time = self._handle.time.values
         # We also set up cosmological information.  Set these to zero if
@@ -186,6 +189,7 @@ class CM1Dataset(Dataset):
         self.omega_lambda = 0.0
         self.omega_matter = 0.0
         self.hubble_constant = 0.0
+
 
     @classmethod
     def _is_valid(self, *args, **kwargs):
