@@ -123,6 +123,7 @@ class CM1Dataset(Dataset):
         self.length_unit = self.quan(1.0, length_unit)
         self.mass_unit = self.quan(1.0, "kg")
         self.time_unit = self.quan(1.0, "s")
+	self.velocity_unit = self.quan(1.0, "m/s")
 
     def _parse_parameter_file(self):
         # This needs to set up the following items.  Note that these are all
@@ -136,6 +137,9 @@ class CM1Dataset(Dataset):
         #   self.parameters             <= full of code-specific items of use
 	self.parameters = {}
 	coords = self._handle.coords
+	# TO DO: Possibly figure out a way to generalize this to be coordiante variable name
+	# agnostic in order to make useful for WRF or climate data. For now, we're hard coding
+	# for CM1 specifically and have named the classes appropriately, but generalizing is good.
 	xh, yh, zh = [coords[i] for i in ["xh", "yh", "zh"]]
         #   self.domain_left_edge       <= array of float64
 	self.domain_left_edge = np.array([xh.min(), yh.min(), zh.min()])
