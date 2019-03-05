@@ -49,6 +49,7 @@ _frontends = [
     'stream',
     'tipsy',
     'ytdata',
+    'nc4_cm1',
 ]
 
 class _frontend_container:
