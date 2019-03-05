@@ -60,7 +60,7 @@ class CM1IOHandler(BaseIOHandler):
                 for grid in chunk.objs:
                     ds = self.ds._handle
                     variable = ds.variables[field[1]]
-                    values = np.squeeze(variable.values.T)
+                    values = np.squeeze(variable.values[0].T)
                     offset += grid.select(selector, values, data[field], offset)
         return data
     
