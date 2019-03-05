@@ -20,43 +20,6 @@ from yt.fields.field_info_container import \
 # container subclass here will define which fields it knows about.  There are
 # optionally methods on it that get called which can be subclassed.
 
-'''
-class StreamFieldInfo(FieldInfoContainer):
-    known_other_fields = (
-        ("density", ("code_mass/code_length**3", ["density"], None)),
-        ("dark_matter_density", ("code_mass/code_length**3", ["dark_matter_density"], None)),
-        ("number_density", ("1/code_length**3", ["number_density"], None)),
-        ("pressure", ("dyne/code_length**2", ["pressure"], None)),
-        ("thermal_energy", ("erg / g", ["thermal_energy"], None)),
-        ("temperature", ("K", ["temperature"], None)),
-        ("velocity_x", ("code_length/code_time", ["velocity_x"], None)),
-        ("velocity_y", ("code_length/code_time", ["velocity_y"], None)),
-        ("velocity_z", ("code_length/code_time", ["velocity_z"], None)),
-        ("magnetic_field_x", ("gauss", [], None)),
-        ("magnetic_field_y", ("gauss", [], None)),
-        ("magnetic_field_z", ("gauss", [], None)),
-        ("radiation_acceleration_x", ("code_length/code_time**2", ["radiation_acceleration_x"], None)),
-        ("radiation_acceleration_y", ("code_length/code_time**2", ["radiation_acceleration_y"], None)),
-        ("radiation_acceleration_z", ("code_length/code_time**2", ["radiation_acceleration_z"], None)),
-        ("metallicity", ("Zsun", ["metallicity"], None)),
-
-        # We need to have a bunch of species fields here, too
-        ("metal_density",   ("code_mass/code_length**3", ["metal_density"], None)),
-        ("hi_density",      ("code_mass/code_length**3", ["hi_density"], None)),
-        ("hii_density",     ("code_mass/code_length**3", ["hii_density"], None)),
-        ("h2i_density",     ("code_mass/code_length**3", ["h2i_density"], None)),
-        ("h2ii_density",    ("code_mass/code_length**3", ["h2ii_density"], None)),
-        ("h2m_density",     ("code_mass/code_length**3", ["h2m_density"], None)),
-        ("hei_density",     ("code_mass/code_length**3", ["hei_density"], None)),
-        ("heii_density",    ("code_mass/code_length**3", ["heii_density"], None)),
-        ("heiii_density",   ("code_mass/code_length**3", ["heiii_density"], None)),
-        ("hdi_density",     ("code_mass/code_length**3", ["hdi_density"], None)),
-        ("di_density",      ("code_mass/code_length**3", ["di_density"], None)),
-        ("dii_density",     ("code_mass/code_length**3", ["dii_density"], None)),
-    )
-
-'''
-
 class CM1FieldInfo(FieldInfoContainer):
     known_other_fields = (
         # Each entry here is of the form
@@ -70,7 +33,7 @@ class CM1FieldInfo(FieldInfoContainer):
         ("thpert", ("K",       ["potential_temperature_perturbation"], None)),
         ("thrhopert", ("K",    ["density_potential_temperature_perturbation"], None)),
         ("prespert", ("hPa",   ["presure_perturbation"], None)),
-        ("rhopert", ("kg/m^3", ["density_perturbation"], None)),
+        ("rhopert", ("kg/m**3", ["density_perturbation"], None)),
         ("dbz", ("dBZ",        ["simulated_reflectivity"], None)),
         ("qvpert", ("g/kg",    ["water_vapor_mixing_ratio_perturbation"], None)),
         ("qc", ("g/kg",        ["cloud_liquid_water_mixing_ratio"], None)),
@@ -80,20 +43,20 @@ class CM1FieldInfo(FieldInfoContainer):
         ("qg", ("g/kg",        ["graupel_or_hail_mixing_ratio"], None)),
         ("qcloud", ("g/kg",    ["sum_of_cloud_water_and_cloud_ice_mixing_ratios"], None)),
         ("qprecip", ("g/kg",   ["sum_of_rain_graupel_snow_mixing_ratios"], None)),
-        ("nci", ("cm^-3",      ["number_concerntration_of_cloud_ice"], None)),
-        ("ncr", ("cm^-3",      ["number_concentration_of_rain"], None)),
-        ("ncs", ("cm^-3",      ["number_concentration_of_snow"], None)),
-        ("ncg", ("cm^-3",      ["number_concentration_of_graupel_or_hail"], None)),
-        ("xvort", ("s^-1",     ["vorticity_x"], None)),
-        ("yvort", ("s^-1",     ["vorticity_y"], None)),
-        ("zvort", ("s^-1",     ["vorticity_z"], None)),
-        ("hvort", ("s^-1",     ["horizontal_vorticity_magnitude"], None)),
-        ("vortmag", ("s^-1",   ["vorticity_magnitude"], None)),
-        ("streamvort", ("s^-1",["streamwise_vorticity"], None)),
-        ("khh", ("m^2/s",      ["khh"], None)),
-        ("khv", ("m^2/s",      ["khv"], None)),
-        ("kmh", ("m^2/s",      ["kmh"], None)),
-        ("kmv", ("m^2/s",      ["kmv"], None))
+        ("nci", ("1/cm**3",      ["number_concerntration_of_cloud_ice"], None)),
+        ("ncr", ("1/cm**3",      ["number_concentration_of_rain"], None)),
+        ("ncs", ("1/cm**3",      ["number_concentration_of_snow"], None)),
+        ("ncg", ("1/cm**3",      ["number_concentration_of_graupel_or_hail"], None)),
+        ("xvort", ("1/s",     ["vorticity_x"], None)),
+        ("yvort", ("1/s",     ["vorticity_y"], None)),
+        ("zvort", ("1/s",     ["vorticity_z"], None)),
+        ("hvort", ("1/s",     ["horizontal_vorticity_magnitude"], None)),
+        ("vortmag", ("1/s",   ["vorticity_magnitude"], None)),
+        ("streamvort", ("1/s",["streamwise_vorticity"], None)),
+        ("khh", ("m**2/s",      ["khh"], None)),
+        ("khv", ("m**2/s",      ["khv"], None)),
+        ("kmh", ("m**2/s",      ["kmh"], None)),
+        ("kmv", ("m**2/s",      ["kmv"], None))
     )
 
     known_particle_fields = (
