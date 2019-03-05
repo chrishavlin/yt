@@ -75,7 +75,6 @@ class CM1Hierarchy(GridIndex):
         
         ## loop over the variable names in the netCDF file
         for key in self.ds._handle.variables.keys():
-            ## 
             if all(x in self.ds._handle[key].dims for x in ['time', 'zh', 'yh', 'xh']) is True:
                 field_tup = ('cm1', key)
                 self.field_list.append(field_tup)
@@ -195,7 +194,6 @@ class CM1Dataset(Dataset):
     def _is_valid(self, *args, **kwargs):
         # This accepts a filename or a set of arguments and returns True or
         # False depending on if the file is of the type requested.
-        print("I'm checking the cm1 reader!")
         try:
             import xarray
         except ImportError:
