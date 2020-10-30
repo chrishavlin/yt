@@ -1,11 +1,12 @@
-from yt.fields.field_info_container import FieldInfoContainer
+from yt.frontends.nc4_cf.fields import NCCFFieldInfo
 
 # We need to specify which fields we might have in our dataset.  The field info
 # container subclass here will define which fields it knows about.  There are
 # optionally methods on it that get called which can be subclassed.
 
 
-class CM1FieldInfo(FieldInfoContainer):
+class CM1FieldInfo(NCCFFieldInfo):
+
     known_other_fields = (
         # Each entry here is of the form
         # ( "name", ("units", ["fields", "to", "alias"], # "display_name")),
@@ -46,18 +47,3 @@ class CM1FieldInfo(FieldInfoContainer):
         ("kmh", ("m**2/s", ["kmh"], None)),
         ("kmv", ("m**2/s", ["kmv"], None)),
     )
-
-    known_particle_fields = (
-        # Identical form to above
-        # ( "name", ("units", ["fields", "to", "alias"], # "display_name")),
-    )
-
-    def setup_fluid_fields(self):
-        # Here we do anything that might need info about the dataset.
-        # You can use self.alias, self.add_output_field (for on-disk fields)
-        # and self.add_field (for derived fields).
-        pass
-
-    def setup_particle_fields(self, ptype):
-        super().setup_particle_fields(ptype)
-        # This will get called for every particle type.

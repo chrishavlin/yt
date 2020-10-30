@@ -31,6 +31,7 @@ _frontends = [
     "http_stream",
     "moab",
     "nc4_cm1",
+    "nc_cf",
     "open_pmd",
     "owls",
     "owls_subfind",

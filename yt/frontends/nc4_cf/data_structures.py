@@ -1,57 +1,105 @@
 import os
 import stat
+import weakref
 from collections import OrderedDict
 
 import numpy as np
 
-from yt.frontends.nc4_cf.data_structures import NCCFDataset, NCCFGrid, NCCFHierarchy
+from yt.data_objects.index_subobjects.grid_patch import AMRGridPatch
+from yt.data_objects.static_output import Dataset
+from yt.geometry.grid_geometry_handler import GridIndex
 from yt.utilities.file_handler import NetCDF4FileHandler, warn_netcdf
-from yt.utilities.logger import ytLogger as mylog
 
-from .fields import CM1FieldInfo
+from .fields import NCCFFieldInfo
 
 
-class CM1Grid(NCCFGrid):
+class NCCFGrid(AMRGridPatch):
     _id_offset = 0
 
     def __init__(self, id, index, level, dimensions):
-        super().__init__(id, index, level, dimensions)
+        super(NCCFGrid, self).__init__(id, filename=index.index_filename, index=index)
+        self.Parent = None
+        self.Children = []
+        self.Level = level
+        self.ActiveDimensions = dimensions
 
     def __repr__(self):
-        return f"CM1Grid_{self.id:d} ({self.ActiveDimensions})"
+        return f"NCCFGrid_{self.id:d} ({self.ActiveDimensions})"
 
 
-class CM1Hierarchy(NCCFHierarchy):
-    grid = CM1Grid
+class NCCFHierarchy(GridIndex):
+    grid = NCCFGrid
 
-    def __init__(self, ds, dataset_type="cm1"):
-        super().__init__(ds, dataset_type)
+    def __init__(self, ds, dataset_type="nc_cf"):
+        self.dataset_type = dataset_type
+        self.dataset = weakref.proxy(ds)
+        # for now, the index file is the dataset!
+        self.index_filename = self.dataset.parameter_filename
+        self.directory = os.path.dirname(self.index_filename)
+        # float type for the simulation edges and must be float64 now
+        self.float_type = np.float64
+        super(NCCFHierarchy, self).__init__(ds, dataset_type)
 
     def _detect_output_fields(self):
-        # build list of on-disk fields for dataset_type 'cm1'
+        # build list of on-disk fields for dataset_type 'nccf'
         vnames = self.dataset.parameters["variable_names"]
-        self.field_list = [("cm1", vname) for vname in vnames]
+        self.field_list = [(self.dataset_type, vname) for vname in vnames]
+
+    def _count_grids(self):
+        # This needs to set self.num_grids
+
+        # different vars could have different dims, so we need different grids...
+        self.num_grids = 1
+
+    def _parse_index(self):
+        self.grid_left_edge[0][:] = self.ds.domain_left_edge[:]
+        self.grid_right_edge[0][:] = self.ds.domain_right_edge[:]
+        self.grid_dimensions[0][:] = self.ds.domain_dimensions[:]
+        self.grid_particle_count[0][0] = 0
+        self.grid_levels[0][0] = 1
+        self.max_level = 1
+
+    def _populate_grid_objects(self):
+        self.grids = np.empty(self.num_grids, dtype="object")
+        for i in range(self.num_grids):
+            g = self.grid(i, self, self.grid_levels.flat[i], self.grid_dimensions[i])
+            g._prepare_grid()
+            g._setup_dx()
+            self.grids[i] = g
 
 
-class CM1Dataset(NCCFDataset):
-    _index_class = CM1Hierarchy
-    _field_info_class = CM1FieldInfo
+class NCCFDataset(Dataset):
+    _index_class = NCCFHierarchy
+    _field_info_class = NCCFFieldInfo
+    _min_version = 1.8
 
     def __init__(
         self,
         filename,
-        dataset_type="cm1",
+        dataset_type="nc_cf",
         storage_filename=None,
         units_override=None,
         unit_system="mks",
     ):
-        self.fluid_types += ("cm1",)
-        super().__init__(
+        self.fluid_types += ("nc_cf",)
+        self._handle = NetCDF4FileHandler(filename)
+        # refinement factor between a grid and its subgrid
+        self.refine_by = 1
+        super(NCCFDataset, self).__init__(
             filename,
             dataset_type,
             units_override=units_override,
             unit_system=unit_system,
         )
+        self.storage_filename = storage_filename
+        self.filename = filename
+
+    def _setup_coordinate_handler(self):
+        # ensure correct ordering of axes so plots aren't rotated (z should always be
+        # on the vertical axis).
+        super(NCCFDataset, self)._setup_coordinate_handler()
+        self.coordinates._x_pairs = (("x", "y"), ("y", "x"), ("z", "x"))
+        self.coordinates._y_pairs = (("x", "z"), ("y", "z"), ("z", "y"))
 
     def _set_code_unit_attributes(self):
         # This is where quantities are created that represent the various
@@ -101,7 +149,6 @@ class CM1Dataset(NCCFDataset):
                 if all(x in var.dimensions for x in ["time", "zh", "yh", "xh"]):
                     varnames.append(key)
             self.parameters["variable_names"] = varnames
-            self.parameters["lofs_version"] = _handle.cm1_lofs_version
             self.parameters["is_uniform"] = _handle.uniform_mesh
             self.current_time = _handle.variables["time"][:][0]
 
@@ -114,7 +161,7 @@ class CM1Dataset(NCCFDataset):
 
         self.dimensionality = 3
         self.domain_dimensions = np.array(dims, dtype="int64")
-        self._periodicity = (False, False, False)
+        self.periodicity = (False, False, False)
 
         # Set cosmological information to zero for non-cosmological.
         self.cosmological_simulation = 0
@@ -129,42 +176,21 @@ class CM1Dataset(NCCFDataset):
         # False depending on if the file is of the type requested.
 
         warn_netcdf(filename)
+        min_version = 1.8
         try:
             nc4_file = NetCDF4FileHandler(filename)
             with nc4_file.open_ds(keepweakref=True) as _handle:
-                is_cm1_lofs = hasattr(_handle, "cm1_lofs_version")
-                is_cm1 = hasattr(_handle, "cm1 version")  # not a typo, it is a space...
-
-                # ensure coordinates of each variable array exists in the dataset
-                coords = _handle.dimensions  # get the dataset wide coordinates
-                failed_vars = []  # list of failed variables
-                for var in _handle.variables:  # iterate over the variables
-                    vcoords = _handle[var].dimensions  # get the dims for the variable
-                    ncoords = len(vcoords)  # number of coordinates in variable
-                    # number of coordinates that pass for a variable
-                    coordspassed = sum(vc in coords for vc in vcoords)
-                    if coordspassed != ncoords:
-                        failed_vars.append(var)
-
-                if failed_vars:
-                    mylog.warning(
-                        "Trying to load a cm1_lofs netcdf file but the "
-                        "coordinates of the following fields do not match the "
-                        "coordinates of the dataset: %s",
-                        failed_vars,
-                    )
+                # cf compliant netcdf files should have
+                CFcon = getattr(
+                    _handle, "Conventions", None
+                )  # should be, e.g., "CF-1.8"
+                if not CFcon and "CF-" in CFcon:
+                    version = float(CFcon.split("-")[-1])
+                    if version < min_version:
+                        return False  # should print a warning too
+                else:
                     return False
-
-            if not is_cm1_lofs:
-                if is_cm1:
-                    mylog.warning(
-                        "It looks like you are trying to load a cm1 netcdf file, "
-                        "but at present yt only supports cm1_lofs output. Until"
-                        " support is added, you can likely use"
-                        " yt.load_uniform_grid() to load your cm1 file manually."
-                    )
-                return False
-        except (OSError, AttributeError, ImportError):
+        except (OSError, ImportError):
             return False
 
         return True
