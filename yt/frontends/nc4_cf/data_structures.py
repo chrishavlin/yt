@@ -30,7 +30,7 @@ class NCCFGrid(AMRGridPatch):
 class NCCFHierarchy(GridIndex):
     grid = NCCFGrid
 
-    def __init__(self, ds, dataset_type="nc_cf"):
+    def __init__(self, ds, dataset_type="nc4_cf"):
         self.dataset_type = dataset_type
         self.dataset = weakref.proxy(ds)
         # for now, the index file is the dataset!
@@ -52,9 +52,10 @@ class NCCFHierarchy(GridIndex):
         self.num_grids = 1
 
     def _parse_index(self):
-        self.grid_left_edge[0][:] = self.ds.domain_left_edge[:]
-        self.grid_right_edge[0][:] = self.ds.domain_right_edge[:]
-        self.grid_dimensions[0][:] = self.ds.domain_dimensions[:]
+        dim = self.dataset.dimensionality
+        self.grid_left_edge[0][:dim] = self.ds.domain_left_edge[:]
+        self.grid_right_edge[0][:dim] = self.ds.domain_right_edge[:]
+        self.grid_dimensions[0][:dim] = self.ds.domain_dimensions[:]
         self.grid_particle_count[0][0] = 0
         self.grid_levels[0][0] = 1
         self.max_level = 1
@@ -76,12 +77,12 @@ class NCCFDataset(Dataset):
     def __init__(
         self,
         filename,
-        dataset_type="nc_cf",
+        dataset_type="nc4_cf",
         storage_filename=None,
         units_override=None,
         unit_system="mks",
     ):
-        self.fluid_types += ("nc_cf",)
+        self.fluid_types += (dataset_type,)
         self._handle = NetCDF4FileHandler(filename)
         # refinement factor between a grid and its subgrid
         self.refine_by = 1
@@ -106,13 +107,66 @@ class NCCFDataset(Dataset):
         # on-disk units.  These are the currently available quantities which
         # should be set, along with examples of how to set them to standard
         # values.
-        with self._handle.open_ds() as _handle:
-            length_unit = _handle.variables["xh"].units
-        self.length_unit = self.quan(1.0, length_unit)
+
+        # with self._handle.open_ds() as _handle:
+        #     length_unit = _handle.variables["xh"].units
+        self.length_unit = self.quan(1.0, "m")
         self.mass_unit = self.quan(1.0, "kg")
         self.time_unit = self.quan(1.0, "s")
         self.velocity_unit = self.quan(1.0, "m/s")
         self.time_unit = self.quan(1.0, "s")
+
+    def _set_dimension_hashes(self, _handle):
+        # builds several hashes and lists to easily retrieve spatial
+        # dimensionality for a field.
+        var2dim = {}  # e.g., var2dim['cp']=('latitude','longitude')
+        dim_set = set()  # set of spatial dims, should match the number of grids
+        vars2d = []  # list of 2d variables
+        vars3d = []  # list of 3d variables
+        for field in _handle.variables:
+            if field not in _handle.dimensions:
+                dims = _handle.variables[field].dimensions
+                full_dims = tuple(i for i in dims if i != "time")
+                if len(full_dims) == 3:
+                    vars3d.append(field)
+                elif len(full_dims) == 2:
+                    vars2d.append(field)
+                var2dim[field] = full_dims
+                dim_set.update((full_dims,))
+        self.parameters["dim_set"] = dim_set
+        self.parameters["variable_dimensions"] = var2dim
+        self.parameters["vars2d"] = vars2d
+        self.parameters["vars3d"] = vars3d
+
+        if len(vars3d) == 0:
+            self.dimensionality = 2
+        else:
+            self.dimensionality = 3
+
+    def _set_domain_extents(self, _handle):
+        # sets domain limits and dimensions
+        dims = list(self.parameters["dim_set"])[0]
+        xyz = [_handle.variables[i][:] for i in dims]
+        min_vals = [xyz[i].min() for i in range(self.dimensionality)]
+        max_vals = [xyz[i].max() for i in range(self.dimensionality)]
+        self.domain_left_edge = np.array(min_vals, dtype="float64")
+        self.domain_right_edge = np.array(max_vals, dtype="float64")
+        ndims = [_handle.dimensions[i].size for i in dims]
+        self.domain_dimensions = np.array(ndims, dtype="int64")
+
+    def _check_uniform_mesh(self, _handle):
+        # returns True if uniform, False is non-uniform
+        dims = list(self.parameters["dim_set"])[0]
+        if hasattr(_handle, "uniform_mesh"):
+            return _handle.uniform_mesh
+        else:
+            for dim in [_handle.variables[i][:] for i in dims]:
+                d_dim_all = dim[1:] - dim[:-1]
+                d_dim = np.full(d_dim_all.shape, dim[1] - dim[0])
+                if not np.allclose(d_dim_all, d_dim):
+                    msg = "netcdf data must be on a uniform grid at present."
+                    raise NotImplementedError(msg)
+        return True
 
     def _parse_parameter_file(self):
         # This needs to set up the following items.  Note that these are all
@@ -124,32 +178,15 @@ class NCCFDataset(Dataset):
         #                                  being read (e.g., UUID or ST_CTIME)
         self.unique_identifier = int(os.stat(self.parameter_filename)[stat.ST_CTIME])
         self.parameters = {}  # code-specific items
+
         with self._handle.open_ds() as _handle:
             # _handle here is a netcdf Dataset object, we need to parse some metadata
             # for constructing our yt ds.
 
-            # TO DO: generalize this to be coordiante variable name agnostic in order to
-            # make useful for WRF or climate data. For now, we're hard coding for CM1
-            # specifically and have named the classes appropriately. Additionaly, we
-            # are only handling the cell-centered grid ("xh","yh","zh") at present.
-            # The cell-centered grid contains scalar fields and interpolated velocities.
-            dims = [_handle.dimensions[i].size for i in ["xh", "yh", "zh"]]
-            xh, yh, zh = [_handle.variables[i][:] for i in ["xh", "yh", "zh"]]
-            self.domain_left_edge = np.array(
-                [xh.min(), yh.min(), zh.min()], dtype="float64"
-            )
-            self.domain_right_edge = np.array(
-                [xh.max(), yh.max(), zh.max()], dtype="float64"
-            )
-
-            # loop over the variable names in the netCDF file, record only those on the
-            # "zh","yh","xh" grid.
-            varnames = []
-            for key, var in _handle.variables.items():
-                if all(x in var.dimensions for x in ["time", "zh", "yh", "xh"]):
-                    varnames.append(key)
-            self.parameters["variable_names"] = varnames
-            self.parameters["is_uniform"] = _handle.uniform_mesh
+            self._set_dimension_hashes(_handle)
+            self._set_domain_extents(_handle)
+            self.parameters["variable_names"] = list(_handle.variables)
+            self.parameters["is_uniform"] = self._check_uniform_mesh(_handle)
             self.current_time = _handle.variables["time"][:][0]
 
             # record the dimension metadata: __handle.dimensions contains netcdf
@@ -159,9 +196,7 @@ class NCCFDataset(Dataset):
                 dim_info[dim] = meta.size
             self.parameters["dimensions"] = dim_info
 
-        self.dimensionality = 3
-        self.domain_dimensions = np.array(dims, dtype="int64")
-        self.periodicity = (False, False, False)
+        self.periodicity = (False,) * self.dimensionality
 
         # Set cosmological information to zero for non-cosmological.
         self.cosmological_simulation = 0
@@ -176,7 +211,7 @@ class NCCFDataset(Dataset):
         # False depending on if the file is of the type requested.
 
         warn_netcdf(filename)
-        min_version = 1.8
+        min_version = 1.0
         try:
             nc4_file = NetCDF4FileHandler(filename)
             with nc4_file.open_ds(keepweakref=True) as _handle:
@@ -184,7 +219,7 @@ class NCCFDataset(Dataset):
                 CFcon = getattr(
                     _handle, "Conventions", None
                 )  # should be, e.g., "CF-1.8"
-                if not CFcon and "CF-" in CFcon:
+                if CFcon and "CF-" in CFcon:
                     version = float(CFcon.split("-")[-1])
                     if version < min_version:
                         return False  # should print a warning too

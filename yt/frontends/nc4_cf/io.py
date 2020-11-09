@@ -6,10 +6,11 @@ from yt.utilities.io_handler import BaseIOHandler
 
 class NCCFIOHandler(BaseIOHandler):
     _particle_reader = False
+    _dataset_type = "nc4_cf"
 
     def __init__(self, ds):
         self.filename = ds.filename
-        self._dataset_type = ds.dataset_type
+        # self._dataset_type = ds.dataset_type
         self._handle = NetCDF4FileHandler(self.filename)
         super(NCCFIOHandler, self).__init__(ds)
 
