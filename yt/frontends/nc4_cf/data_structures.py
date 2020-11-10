@@ -121,34 +121,44 @@ class NCCFDataset(Dataset):
         # dimensionality for a field.
         var2dim = {}  # e.g., var2dim['cp']=('latitude','longitude')
         dim_set = set()  # set of spatial dims, should match the number of grids
-        vars2d = []  # list of 2d variables
-        vars3d = []  # list of 3d variables
+        vars_by_dim = {i: [] for i in range(4)}  # dict o
         for field in _handle.variables:
             if field not in _handle.dimensions:
                 dims = _handle.variables[field].dimensions
                 full_dims = tuple(i for i in dims if i != "time")
-                if len(full_dims) == 3:
-                    vars3d.append(field)
-                elif len(full_dims) == 2:
-                    vars2d.append(field)
-                var2dim[field] = full_dims
-                dim_set.update((full_dims,))
-        self.parameters["dim_set"] = dim_set
-        self.parameters["variable_dimensions"] = var2dim
-        self.parameters["vars2d"] = vars2d
-        self.parameters["vars3d"] = vars3d
+                vars_by_dim[len(full_dims)].append(field)
+                if len(full_dims) > 0:
+                    var2dim[field] = full_dims
+                    dim_set.update((full_dims,))
+        if len(dim_set) > 1:
+            print("add a warning about multiple grids...")
 
-        if len(vars3d) == 0:
+        self.parameters["dim_set"] = dim_set
+
+        # set a primary dimension set
+        dim_list = list(dim_set)
+        primary_dim = dim_list[0]
+        for dim in dim_list:
+            if len(dim) > len(primary_dim):
+                primary_dim = dim
+        self.parameters["primary_dim"] = primary_dim
+        self.parameters["variable_dimensions"] = var2dim
+        self.parameters["vars_by_dim"] = vars_by_dim
+        if len(vars_by_dim[3]) == 0:
             self.dimensionality = 2
         else:
             self.dimensionality = 3
 
     def _set_domain_extents(self, _handle):
         # sets domain limits and dimensions
-        dims = list(self.parameters["dim_set"])[0]
+        dims = self.parameters["primary_dim"]
         xyz = [_handle.variables[i][:] for i in dims]
         min_vals = [xyz[i].min() for i in range(self.dimensionality)]
         max_vals = [xyz[i].max() for i in range(self.dimensionality)]
+        # domain dims have to be 3d, even if 2d:
+        if self.dimensionality == 2:
+            min_vals.append(0.0)
+            max_vals.append(1.0)
         self.domain_left_edge = np.array(min_vals, dtype="float64")
         self.domain_right_edge = np.array(max_vals, dtype="float64")
         ndims = [_handle.dimensions[i].size for i in dims]

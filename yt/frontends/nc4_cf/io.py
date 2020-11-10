@@ -45,13 +45,16 @@ class NCCFIOHandler(BaseIOHandler):
 
         data = {}
         offset = 0
+        time_index = 0  # this should come from somewhere...
         with self._handle.open_ds() as ds:
             for field in fields:
                 data[field] = np.empty(size, dtype="float64")
                 for chunk in chunks:
                     for grid in chunk.objs:
-                        variable = ds.variables[field[1]][:][0]
-                        values = np.squeeze(variable.T)
+                        variable = ds.variables[field[1]][:][time_index]
+                        values = variable
+                        # hmm, this was causing an error: figure that out...
+                        # values = np.squeeze(variable.T)
                         offset += grid.select(selector, values, data[field], offset)
         return data
 
