@@ -12,6 +12,11 @@ from yt.utilities.file_handler import NetCDF4FileHandler, warn_netcdf
 
 from .fields import NCCFFieldInfo
 
+# define some common dimension names to check against
+x_names = ['longitude', 'lon', 'long']
+y_names = ['latitude', 'lat', 'latg']
+geo_names = x_names + y_names
+internal_names = ['depth', 'radius']
 
 class NCCFGrid(AMRGridPatch):
     _id_offset = 0
@@ -81,11 +86,13 @@ class NCCFDataset(Dataset):
         storage_filename=None,
         units_override=None,
         unit_system="mks",
+        time_vars=['time'],
     ):
         self.fluid_types += (dataset_type,)
         self._handle = NetCDF4FileHandler(filename)
         # refinement factor between a grid and its subgrid
         self.refine_by = 1
+        self.time_vars = time_vars
         super(NCCFDataset, self).__init__(
             filename,
             dataset_type,
@@ -94,13 +101,6 @@ class NCCFDataset(Dataset):
         )
         self.storage_filename = storage_filename
         self.filename = filename
-
-    def _setup_coordinate_handler(self):
-        # ensure correct ordering of axes so plots aren't rotated (z should always be
-        # on the vertical axis).
-        super(NCCFDataset, self)._setup_coordinate_handler()
-        self.coordinates._x_pairs = (("x", "y"), ("y", "x"), ("z", "x"))
-        self.coordinates._y_pairs = (("x", "z"), ("y", "z"), ("z", "y"))
 
     def _set_code_unit_attributes(self):
         # This is where quantities are created that represent the various
@@ -116,21 +116,76 @@ class NCCFDataset(Dataset):
         self.velocity_unit = self.quan(1.0, "m/s")
         self.time_unit = self.quan(1.0, "s")
 
+    def _infer_geometry(self):
+        # checks if this dataset is a geographic or internal_geographic dataset,
+        # defaulting to cartesian
+        is_internal = 0
+
+        with self._handle.open_ds() as _handle:
+            dims = list(_handle.dimensions.keys())
+            is_geographic = sum([dim.lower() in geo_names for dim in dims])
+            if is_geographic:
+                is_internal = sum([dim.lower() in internal_names for dim in dims])
+
+        if is_internal:
+            ordering = ('depth', 'latitude', 'longitude')  # this should be inferred as well...
+            geometry = ('internal_geographic', ordering)
+        elif is_geographic:
+            ordering = ('altitude', 'latitude', 'longitude')  # this should be inferred as well...
+            geometry = ('geographic', ordering)
+        else:
+            geometry = 'cartesian'
+
+        return geometry
+
+    def _infer_periodicity(self, dims, min_vals, max_vals):
+        """
+        Infers the periodicity of the dataset from lat/lon ranges
+
+        dims : tuple of dimension names, ('lat','lon','z')
+        min_vals : list of min values for each dimension
+        max_vals : list of max values for each dimension
+        """
+
+        periodicity = []
+        for idim, dim in enumerate(dims):
+            dist = max_vals[idim] - min_vals[idim]
+            if dim in x_names and dist > 359.:
+                periodicity.append(True)
+            elif dim in y_names and dist > 179.:
+                periodicity.append(True)
+            else:
+                periodicity.append(False)
+
+        if self.dimensionality == 2:
+            periodicity.append(False)
+
+        self.periodicity = tuple(periodicity)
+
     def _set_dimension_hashes(self, _handle):
-        # builds several hashes and lists to easily retrieve spatial
-        # dimensionality for a field.
+        # builds several hashes and lists to easily retrieve
+        # dimensionality for a field. Not all of these are used right now...
         var2dim = {}  # e.g., var2dim['cp']=('latitude','longitude')
         dim_set = set()  # set of spatial dims, should match the number of grids
-        vars_by_dim = {i: [] for i in range(4)}  # dict o
+        # dict of lists with fieldnames by dimensionality:
+        vars_by_dim = {i: [] for i in range(4)}
+        time_index = {} # the time index for each field
+
         for field in _handle.variables:
             if field not in _handle.dimensions:
                 dims = _handle.variables[field].dimensions
-                full_dims = tuple(i for i in dims if i != "time")
+                full_dims = tuple(i for i in dims if i not in self.time_vars)
+                time_var = [i for i in dims if i in self.time_vars]
+                if len(time_var):
+                    time_index[field] = dims.index(time_var[0])
+                # full_dims, _, _, _ = self._normalize_dims(full_dims)
                 vars_by_dim[len(full_dims)].append(field)
                 if len(full_dims) > 0:
                     var2dim[field] = full_dims
                     dim_set.update((full_dims,))
+
         if len(dim_set) > 1:
+            # map the different sets to different grids?
             print("add a warning about multiple grids...")
 
         self.parameters["dim_set"] = dim_set
@@ -144,6 +199,7 @@ class NCCFDataset(Dataset):
         self.parameters["primary_dim"] = primary_dim
         self.parameters["variable_dimensions"] = var2dim
         self.parameters["vars_by_dim"] = vars_by_dim
+        self.parameters["time_index"] = time_index
         if len(vars_by_dim[3]) == 0:
             self.dimensionality = 2
         else:
@@ -155,10 +211,13 @@ class NCCFDataset(Dataset):
         xyz = [_handle.variables[i][:] for i in dims]
         min_vals = [xyz[i].min() for i in range(self.dimensionality)]
         max_vals = [xyz[i].max() for i in range(self.dimensionality)]
+
         # domain dims have to be 3d, even if 2d:
         if self.dimensionality == 2:
             min_vals.append(0.0)
             max_vals.append(1.0)
+
+        self._infer_periodicity(dims, min_vals, max_vals)
         self.domain_left_edge = np.array(min_vals, dtype="float64")
         self.domain_right_edge = np.array(max_vals, dtype="float64")
         ndims = [_handle.dimensions[i].size for i in dims]
@@ -206,9 +265,11 @@ class NCCFDataset(Dataset):
                 dim_info[dim] = meta.size
             self.parameters["dimensions"] = dim_info
 
-        self.periodicity = (False,) * self.dimensionality
+        self.geometry = self._infer_geometry()
+        self._zero_cosmological_constants()
 
-        # Set cosmological information to zero for non-cosmological.
+    def _zero_cosmological_constants(self):
+        # Set cosmological information to zero for non-cosmological dataset.
         self.cosmological_simulation = 0
         self.current_redshift = 0.0
         self.omega_lambda = 0.0
