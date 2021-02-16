@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from functools import _make_key, lru_cache
 
 import numpy as np
+from dask import array as dask_array, delayed as dask_delayed
 
 from yt.geometry.selection_routines import GridSelector
 from yt.utilities.on_demand_imports import _h5py as h5py
@@ -157,19 +158,14 @@ class BaseIOHandler:
         return psize
 
     def _read_particle_selection(self, chunks, selector, fields):
-        rv = {}
-        ind = {}
         # We first need a set of masks for each particle type
         ptf = defaultdict(list)  # ptype -> on-disk fields to read
-        fsize = defaultdict(lambda: 0)  # ptype -> size of return value
-        psize = defaultdict(lambda: 0)  # ptype -> particle count on disk
         field_maps = defaultdict(list)  # ptype -> fields (including unions)
         chunks = list(chunks)
         unions = self.ds.particle_unions
         # What we need is a mapping from particle types to return types
         for field in fields:
             ftype, fname = field
-            fsize[field] = 0
             # We should add a check for p.fparticle_unions or something here
             if ftype in unions:
                 for pt in unions[ftype]:
@@ -180,40 +176,57 @@ class BaseIOHandler:
                 field_maps[field].append(field)
         # Now we have our full listing
 
-        # psize maps the names of particle types to the number of
-        # particles of each type
-        self._count_particles_chunks(psize, chunks, ptf, selector)
+        # psize_by_chunk maps the names of particle types to the number of
+        # particles of each type for each chunk
+        psize_by_chunk = self._count_particles_by_chunk(chunks, ptf, selector)
 
-        # Now we allocate
+        rv = {field: [] for field in fields}
+        for chunk, chunk_psize in zip(chunks, psize_by_chunk):
+            if len(list(chunk_psize.keys())):
+                # chunk_data is a dict for a single chunk by field
+                # e.g., chunk_data[('PartType4','Density')] to get vals for this chunk
+                chunk_data = dask_delayed(self._read_single_chunk)(chunk, ptf, selector)
+
+                # distribute the fields to list of delayed arrays
+                for field in fields:
+                    # get the size for this field for this chunk
+                    ra_size = 0
+                    if field[0] in unions:
+                        for pt in unions[field[0]]:
+                            ra_size += chunk_psize.get(pt, 0)
+                    else:
+                        ra_size = chunk_psize.get(field[0], 0)
+
+                    if field[1] in self._vector_fields:
+                        shape = (ra_size, self._vector_fields[field[1]])
+                    elif field[1] in self._array_fields:
+                        shape = (ra_size,) + self._array_fields[field[1]]
+                    else:
+                        shape = (ra_size,)
+
+                    vals = dask_delayed(chunk_data.get)(field)
+                    rv[field].append(
+                        dask_array.from_delayed(vals, shape, dtype="float64")
+                    )
+
+        # stack the delayed chunk-arrays into single delayed dask arrays by field
         for field in fields:
-            if field[0] in unions:
-                for pt in unions[field[0]]:
-                    fsize[field] += psize.get(pt, 0)
-            else:
-                fsize[field] += psize.get(field[0], 0)
-        for field in fields:
-            if field[1] in self._vector_fields:
-                shape = (fsize[field], self._vector_fields[field[1]])
-            elif field[1] in self._array_fields:
-                shape = (fsize[field],) + self._array_fields[field[1]]
-            else:
-                shape = (fsize[field],)
-            rv[field] = np.empty(shape, dtype="float64")
-            ind[field] = 0
-        # Now we read.
-        for field_r, vals in self._read_particle_fields(chunks, ptf, selector):
-            # Note that we now need to check the mappings
-            for field_f in field_maps[field_r]:
-                my_ind = ind[field_f]
-                # mylog.debug("Filling %s from %s to %s with %s",
-                #    field_f, my_ind, my_ind+vals.shape[0], field_r)
-                rv[field_f][my_ind : my_ind + vals.shape[0], ...] = vals
-                ind[field_f] += vals.shape[0]
-        # Now we need to truncate all our fields, since we allow for
-        # over-estimating.
-        for field_f in ind:
-            rv[field_f] = rv[field_f][: ind[field_f]]
+            rv[field] = dask_array.hstack(rv[field])
+
+        # bring into memory if not returning
+        return_dask_array = False
+        if return_dask_array is False:  # return flat np array
+            for field in fields:
+                rv[field] = rv[field].compute()
+        # add option to return .persist()
+
         return rv
+
+    def _read_single_chunk(self, chunk, ptf, selector):
+        chunk_results = {}
+        for field_r, vals in self._read_particle_fields([chunk], ptf, selector):
+            chunk_results[field_r] = vals
+        return chunk_results
 
 
 class IOHandlerExtracted(BaseIOHandler):
