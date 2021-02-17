@@ -5,8 +5,6 @@ Generic file-handing functions for SPH data
 
 
 """
-from dask import compute, delayed
-
 from yt.utilities.io_handler import BaseIOHandler
 
 
@@ -33,15 +31,6 @@ class IOHandlerSPH(BaseIOHandler):
             for ptype, (x, y, z), hsml in self._read_particle_coords(chunks, ptf):
                 psize[ptype] += selector.count_points(x, y, z, hsml)
         return dict(psize)
-
-    def _count_particles_by_chunk(self, chunks, ptf, selector):
-        # returns a list of psize dicts, one for each chunk, for setting
-        # dask array chunk sizes. For now, it always applies the selector
-        # as chunk-ordering is important.
-        dlayd = [delayed(self._count_chunk_points)(ch, ptf, selector) for ch in chunks]
-        psize_by_chunk = compute(*dlayd)  # sizes by chunk
-
-        return psize_by_chunk
 
     def _count_chunk_points(self, chunk, ptf, selector):
         # returns particle size dict for a single chunk

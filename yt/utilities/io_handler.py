@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from functools import _make_key, lru_cache
 
 import numpy as np
-from dask import array as dask_array, delayed as dask_delayed
+from dask import array as dask_array, compute as dask_compute, delayed as dask_delayed
 
 from yt.geometry.selection_routines import GridSelector
 from yt.utilities.on_demand_imports import _h5py as h5py
@@ -157,12 +157,35 @@ class BaseIOHandler:
             psize[ptype] += selector.count_points(x, y, z, 0.0)
         return psize
 
+    def _count_particles_by_chunk(self, chunks, ptf, selector):
+        # returns a list of psize dicts, one for each chunk, for setting
+        # dask array chunk sizes.
+        dlayd = [
+            dask_delayed(self._count_chunk_points)(ch, ptf, selector) for ch in chunks
+        ]
+        psize_by_chunk = dask_compute(*dlayd)  # sizes by chunk
+
+        return psize_by_chunk
+
+    def _count_chunk_points(self, chunk, ptf, selector):
+        # returns particle size dict for a single chunk
+        chunk_psize = {}
+        chunk_psize = defaultdict(lambda: 0)
+        for ptype, (x, y, z) in self._read_particle_coords([chunk], ptf):
+            chunk_psize[ptype] += selector.count_points(x, y, z, 0.0)
+
+        return dict(chunk_psize)
+
     def _read_particle_selection(self, chunks, selector, fields):
+        rv = {}  # in memory field-dict (output)
         # We first need a set of masks for each particle type
         ptf = defaultdict(list)  # ptype -> on-disk fields to read
         field_maps = defaultdict(list)  # ptype -> fields (including unions)
+        field_sizes = defaultdict(lambda: 0)  # total particles for field
+        rv_chunks = defaultdict(list)  # dask arrays by chunks, fields
         chunks = list(chunks)
         unions = self.ds.particle_unions
+
         # What we need is a mapping from particle types to return types
         for field in fields:
             ftype, fname = field
@@ -180,53 +203,62 @@ class BaseIOHandler:
         # particles of each type for each chunk
         psize_by_chunk = self._count_particles_by_chunk(chunks, ptf, selector)
 
-        rv = {field: [] for field in fields}
         for chunk, chunk_psize in zip(chunks, psize_by_chunk):
             if len(list(chunk_psize.keys())):
                 # chunk_data is a dict for a single chunk by field
                 # e.g., chunk_data[('PartType4','Density')] to get vals for this chunk
                 chunk_data = dask_delayed(self._read_single_chunk)(chunk, ptf, selector)
+                for ptype, fieldlist in ptf.items():
+                    ra_size = chunk_psize.get(ptype, 0)
+                    if ra_size:
+                        for field in fieldlist:
+                            pfld = (ptype, field)
+                            if field in self._vector_fields:
+                                shape = (ra_size, self._vector_fields[field])
+                            elif field in self._array_fields:
+                                shape = (ra_size,) + self._array_fields[field]
+                            else:
+                                shape = (ra_size,)
 
-                # distribute the fields to list of delayed arrays
-                for field in fields:
-                    # get the size for this field for this chunk
-                    ra_size = 0
-                    if field[0] in unions:
-                        for pt in unions[field[0]]:
-                            ra_size += chunk_psize.get(pt, 0)
-                    else:
-                        ra_size = chunk_psize.get(field[0], 0)
-
-                    if field[1] in self._vector_fields:
-                        shape = (ra_size, self._vector_fields[field[1]])
-                    elif field[1] in self._array_fields:
-                        shape = (ra_size,) + self._array_fields[field[1]]
-                    else:
-                        shape = (ra_size,)
-
-                    vals = dask_delayed(chunk_data.get)(field)
-                    rv[field].append(
-                        dask_array.from_delayed(vals, shape, dtype="float64")
-                    )
+                            vals = dask_delayed(chunk_data.get)(pfld)
+                            for mapped_field in field_maps[pfld]:
+                                rv_chunks[mapped_field].append(
+                                    dask_array.from_delayed(
+                                        vals, shape, dtype="float64"
+                                    )
+                                )
+                                field_sizes[mapped_field] += ra_size
 
         # stack the delayed chunk-arrays into single delayed dask arrays by field
         for field in fields:
-            rv[field] = dask_array.hstack(rv[field])
+            if field_sizes[field]:
+                # rv[field] = dask_array.hstack(rv_chunks[field])
+                if len(rv_chunks[field]) > 1:
+                    rv[field] = dask_array.concatenate(rv_chunks[field], axis=0)
+                else:
+                    rv[field] = rv_chunks[field][0]
 
-        # bring into memory if not returning
-        return_dask_array = False
+        return_dask_array = False  # future arg
         if return_dask_array is False:  # return flat np array
             for field in fields:
-                rv[field] = rv[field].compute()
+                if field_sizes[field]:
+                    rv[field] = rv[field].compute()
         # add option to return .persist()
 
         return rv
 
     def _read_single_chunk(self, chunk, ptf, selector):
-        chunk_results = {}
+        chunk_results = defaultdict(list)
         for field_r, vals in self._read_particle_fields([chunk], ptf, selector):
-            chunk_results[field_r] = vals
-        return chunk_results
+            chunk_results[field_r].append(vals)
+
+        for field_r, vals in chunk_results.items():
+            if len(vals) > 1:
+                chunk_results[field_r] = np.concatenate(vals, axis=0)
+            else:
+                chunk_results[field_r] = vals[0]
+
+        return dict(chunk_results)
 
 
 class IOHandlerExtracted(BaseIOHandler):
