@@ -243,6 +243,9 @@ class BaseIOHandler:
             for field in fields:
                 if field_sizes[field]:
                     rv[field] = rv[field].compute()
+                else:
+                    # need to return empty arrays
+                    rv[field] = np.array([], dtype="float64")
         # add option to return .persist()
 
         return rv
