@@ -172,6 +172,15 @@ class BaseIOHandler:
 
         return psize_by_chunk
 
+    def _get_array_shape(self, field, ra_size):
+        if field in self._vector_fields:
+            shape = (ra_size, self._vector_fields[field])
+        elif field in self._array_fields:
+            shape = (ra_size,) + self._array_fields[field]
+        else:
+            shape = (ra_size,)
+        return shape
+
     def _read_particle_selection(self, chunks, selector, fields):
         rv = {}  # in memory field-dict (output)
         # We first need a set of masks for each particle type
@@ -209,12 +218,7 @@ class BaseIOHandler:
                     if ra_size:
                         for field in fieldlist:
                             pfld = (ptype, field)
-                            if field in self._vector_fields:
-                                shape = (ra_size, self._vector_fields[field])
-                            elif field in self._array_fields:
-                                shape = (ra_size,) + self._array_fields[field]
-                            else:
-                                shape = (ra_size,)
+                            shape = self._get_array_shape(field, ra_size)
 
                             vals = dask_delayed(chunk_data.get)(pfld)
                             for mapped_field in field_maps[pfld]:
@@ -241,7 +245,9 @@ class BaseIOHandler:
                     rv[field] = rv[field].compute()
                 else:
                     # need to return empty arrays
-                    rv[field] = np.array([], dtype="float64")
+                    rv[field] = np.empty(
+                        self._get_array_shape(field[1], 0), dtype="float64"
+                    )
         # add option to return .persist()
 
         return rv
