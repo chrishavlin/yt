@@ -242,7 +242,9 @@ class BaseIOHandler:
         if return_dask_array is False:  # return flat np array
             for field in fields:
                 if field_sizes[field]:
-                    rv[field] = rv[field].compute()
+                    rv[field] = rv[field].compute().astype("float64")
+                    # not sure why the extra type conversion is needed, but
+                    # some answer tests fail without it.
                 else:
                     # need to return empty arrays
                     rv[field] = np.empty(
