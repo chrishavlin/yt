@@ -159,22 +159,18 @@ class BaseIOHandler:
 
     def _count_particles_by_chunk(self, chunks, ptf, selector):
         # returns a list of psize dicts, one for each chunk, for setting
-        # dask array chunk sizes.
+        # dask array chunk sizes. Wraps self._count_particles_chunks,
+        # which some frontends implement (hence, wrapping it here rather than
+        # rewriting _count_particles_chunks).
         dlayd = [
-            dask_delayed(self._count_chunk_points)(ch, ptf, selector) for ch in chunks
+            dask_delayed(self._count_particles_chunks)(
+                defaultdict(lambda: 0), [ch], ptf, selector
+            )
+            for ch in chunks
         ]
         psize_by_chunk = dask_compute(*dlayd)  # sizes by chunk
 
         return psize_by_chunk
-
-    def _count_chunk_points(self, chunk, ptf, selector):
-        # returns particle size dict for a single chunk
-        chunk_psize = {}
-        chunk_psize = defaultdict(lambda: 0)
-        for ptype, (x, y, z) in self._read_particle_coords([chunk], ptf):
-            chunk_psize[ptype] += selector.count_points(x, y, z, 0.0)
-
-        return dict(chunk_psize)
 
     def _read_particle_selection(self, chunks, selector, fields):
         rv = {}  # in memory field-dict (output)
