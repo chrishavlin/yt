@@ -168,7 +168,13 @@ class BaseIOHandler:
             )
             for ch in chunks
         ]
-        psize_by_chunk = dask_compute(*dlayd)  # sizes by chunk
+
+        # temp hard code for forcing single thread. needs to be an option...
+        extra_args = {}
+        force_single_thread = False
+        if force_single_thread:
+            extra_args["scheduler"] = "single-threaded"
+        psize_by_chunk = dask_compute(*dlayd, **extra_args)  # sizes by chunk
 
         return psize_by_chunk
 
