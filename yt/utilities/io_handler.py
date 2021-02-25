@@ -27,6 +27,7 @@ class BaseIOHandler:
     _cache_on = False
     _misses = 0
     _hits = 0
+    _force_single_thread = True
 
     def __init_subclass__(cls, *args, **kwargs):
         super().__init_subclass__(*args, **kwargs)
@@ -169,10 +170,11 @@ class BaseIOHandler:
             for ch in chunks
         ]
 
-        # temp hard code for forcing single thread. needs to be an option...
+        # temp hard code for forcing single thread. this needs to be handled
+        # better. only seems to be a problem for enzo_p, and only in this initial
+        # read...
         extra_args = {}
-        force_single_thread = False
-        if force_single_thread:
+        if self._force_single_thread:
             extra_args["scheduler"] = "single-threaded"
         psize_by_chunk = dask_compute(*dlayd, **extra_args)  # sizes by chunk
 
@@ -238,7 +240,6 @@ class BaseIOHandler:
         # stack the delayed chunk-arrays into single delayed dask arrays by field
         for field in fields:
             if field_sizes[field]:
-                # rv[field] = dask_array.hstack(rv_chunks[field])
                 if len(rv_chunks[field]) > 1:
                     rv[field] = dask_array.concatenate(rv_chunks[field], axis=0)
                 else:
