@@ -27,7 +27,7 @@ class BaseIOHandler:
     _cache_on = False
     _misses = 0
     _hits = 0
-    _force_single_thread = True
+    _thread_safe = False  # need to handle better. see note in _count_particles_by_chunk
 
     def __init_subclass__(cls, *args, **kwargs):
         super().__init_subclass__(*args, **kwargs)
@@ -172,15 +172,19 @@ class BaseIOHandler:
 
         # temp hard code for forcing single thread. this needs to be handled
         # better. only seems to be a problem for enzo_p, and only in this initial
-        # read...
+        # read... but forcing it this way means if running a dask client
+        # with multiple processes, this step will still be done only on a single
+        # processor.
         extra_args = {}
-        if self._force_single_thread:
+        if not self._thread_safe:
+            # need to check if a client is running too?
             extra_args["scheduler"] = "single-threaded"
         psize_by_chunk = dask_compute(*dlayd, **extra_args)  # sizes by chunk
 
         return psize_by_chunk
 
     def _get_array_shape(self, field, ra_size):
+        # returns the expected array shape, accounting for vector and array fields
         if field in self._vector_fields:
             shape = (ra_size, self._vector_fields[field])
         elif field in self._array_fields:
@@ -218,46 +222,59 @@ class BaseIOHandler:
 
         for chunk, chunk_psize in zip(chunks, psize_by_chunk):
             if len(list(chunk_psize.keys())):
+                # read this chunk's data:
+                chunk_data = dask_delayed(self._read_single_chunk)(chunk, ptf, selector)
                 # chunk_data is a dict for a single chunk by field
                 # e.g., chunk_data[('PartType4','Density')] to get vals for this chunk
-                chunk_data = dask_delayed(self._read_single_chunk)(chunk, ptf, selector)
+                # but remember that they are delayed objs at this point (hence using
+                # a delayed chunk_data.get below)
                 for ptype, fieldlist in ptf.items():
-                    ra_size = chunk_psize.get(ptype, 0)
+                    ra_size = chunk_psize[ptype]
                     if ra_size:
                         for field in fieldlist:
                             pfld = (ptype, field)
                             shape = self._get_array_shape(field, ra_size)
-
+                            # retrieve the values from the chunk_data dict:
                             vals = dask_delayed(chunk_data.get)(pfld)
+                            # append values to the proper mapped field list
                             for mapped_field in field_maps[pfld]:
                                 rv_chunks[mapped_field].append(
                                     dask_array.from_delayed(
                                         vals, shape, dtype="float64"
                                     )
                                 )
+                                # track the across-chunk size for the mapped field
                                 field_sizes[mapped_field] += ra_size
 
-        # stack the delayed chunk-arrays into single delayed dask arrays by field
+        # combine the delayed chunk-arrays into single delayed dask arrays by field
         for field in fields:
             if field_sizes[field]:
                 if len(rv_chunks[field]) > 1:
+                    # multiple chunks have fields, create single dask array
                     rv[field] = dask_array.concatenate(rv_chunks[field], axis=0)
                 else:
+                    # only one chunk has a field
                     rv[field] = rv_chunks[field][0]
 
-        return_dask_array = False  # future arg
-        if return_dask_array is False:  # return flat np array
+        return_dask_array = (
+            False  # to do: future kwarg to enable return of dask arrays?
+        )
+        if return_dask_array is False:
+            # return flat np arrays in memory
             for field in fields:
                 if field_sizes[field]:
                     rv[field] = rv[field].compute().astype("float64")
                     # not sure why the extra type conversion is needed, but
-                    # some answer tests fail without it.
+                    # some answer tests fail without it. also, why doesnt
+                    # enzo need singlethreading enforced here too??? just luck?
+                    # do we need to ensure singlethreading here too? probably...
                 else:
                     # need to return empty arrays
                     rv[field] = np.empty(
                         self._get_array_shape(field[1], 0), dtype="float64"
                     )
-        # add option to return .persist()
+        # else:
+        #     to do: return the delayed arrays or call .persist()?
 
         return rv
 
