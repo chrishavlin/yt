@@ -188,7 +188,7 @@ class BaseIOHandler:
         rv = {}  # in memory field-dict (output)
         # We first need a set of masks for each particle type
         ptf = defaultdict(list)  # ptype -> on-disk fields to read
-        fsize = defaultdict(lambda: 0)  # ptype -> size of return value
+        fsize = defaultdict(lambda: 0)  # field -> size of return value
         field_maps = defaultdict(list)  # ptype -> fields (including unions)
         unions = self.ds.particle_unions
 
