@@ -188,11 +188,13 @@ class BaseIOHandler:
         rv = {}  # in memory field-dict (output)
         # We first need a set of masks for each particle type
         ptf = defaultdict(list)  # ptype -> on-disk fields to read
+        fsize = defaultdict(lambda: 0)  # ptype -> size of return value
         field_maps = defaultdict(list)  # ptype -> fields (including unions)
-        field_sizes = defaultdict(lambda: 0)  # total particles for field
-        rv_chunks = defaultdict(list)  # dask arrays by chunks, fields
-        chunks = list(chunks)
         unions = self.ds.particle_unions
+
+        # chunk related
+        rv_chunks = defaultdict(list)  # field -> chunked dask array
+        chunks = list(chunks)
 
         # What we need is a mapping from particle types to return types
         for field in fields:
@@ -235,11 +237,11 @@ class BaseIOHandler:
                                     )
                                 )
                                 # track the across-chunk size for the mapped field
-                                field_sizes[mapped_field] += ra_size
+                                fsize[mapped_field] += ra_size
 
         # combine the delayed chunk-arrays into single delayed dask arrays by field
         for field in fields:
-            if field_sizes[field]:
+            if fsize[field]:
                 if len(rv_chunks[field]) > 1:
                     # multiple chunks have fields, create single dask array
                     rv[field] = dask_array.concatenate(rv_chunks[field], axis=0)
@@ -252,7 +254,7 @@ class BaseIOHandler:
         if return_dask_array is False:
             # return flat np arrays in memory
             for field in fields:
-                if field_sizes[field]:
+                if fsize[field]:
                     rv[field] = dask_compute(rv[field])[0].astype("float64")
                     # not sure why the extra type conversion is needed, but
                     # some answer tests fail without it. also, why doesnt
