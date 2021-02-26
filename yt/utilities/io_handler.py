@@ -4,10 +4,11 @@ from contextlib import contextmanager
 from functools import _make_key, lru_cache
 
 import numpy as np
-from dask import array as dask_array, compute as dask_compute, delayed as dask_delayed
+from dask import array as dask_array, delayed as dask_delayed
 
 from yt.geometry.selection_routines import GridSelector
 from yt.utilities.on_demand_imports import _h5py as h5py
+from yt.utilities.parallel_tools.dask_helper import compute as dask_compute
 
 io_registry = {}
 
@@ -27,7 +28,6 @@ class BaseIOHandler:
     _cache_on = False
     _misses = 0
     _hits = 0
-    _thread_safe = False  # need to handle better. see note in _count_particles_by_chunk
 
     def __init_subclass__(cls, *args, **kwargs):
         super().__init_subclass__(*args, **kwargs)
@@ -170,16 +170,7 @@ class BaseIOHandler:
             for ch in chunks
         ]
 
-        # temp hard code for forcing single thread. this needs to be handled
-        # better. only seems to be a problem for enzo_p, and only in this initial
-        # read... but forcing it this way means if running a dask client
-        # with multiple processes, this step will still be done only on a single
-        # processor.
-        extra_args = {}
-        if not self._thread_safe:
-            # need to check if a client is running too?
-            extra_args["scheduler"] = "single-threaded"
-        psize_by_chunk = dask_compute(*dlayd, **extra_args)  # sizes by chunk
+        psize_by_chunk = dask_compute(*dlayd)  # sizes by chunk
 
         return psize_by_chunk
 
@@ -256,14 +247,13 @@ class BaseIOHandler:
                     # only one chunk has a field
                     rv[field] = rv_chunks[field][0]
 
-        return_dask_array = (
-            False  # to do: future kwarg to enable return of dask arrays?
-        )
+        # to do: future kwarg to enable return of dask arrays
+        return_dask_array = False
         if return_dask_array is False:
             # return flat np arrays in memory
             for field in fields:
                 if field_sizes[field]:
-                    rv[field] = rv[field].compute().astype("float64")
+                    rv[field] = dask_compute(rv[field])[0].astype("float64")
                     # not sure why the extra type conversion is needed, but
                     # some answer tests fail without it. also, why doesnt
                     # enzo need singlethreading enforced here too??? just luck?
