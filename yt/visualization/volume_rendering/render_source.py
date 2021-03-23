@@ -122,6 +122,18 @@ class OpaqueSource(RenderSource):
     def set_zbuffer(self, zbuffer):
         self.zbuffer = zbuffer
 
+    def _initialize_zbuffer(self, zbuffer, camera):
+
+        if zbuffer is None:
+            empty = camera.lens.new_image(camera)  # returns a zero array
+            z = np.full(empty.shape[:2], np.inf, dtype="float64")
+            zbuffer = ZBuffer(empty, z)
+        else:
+            empty = zbuffer.rgba
+            z = zbuffer.z
+
+        return empty, z, zbuffer
+
 
 def create_volume_source(data_source, field):
     data_source = data_source_or_all(data_source)
@@ -817,6 +829,18 @@ class MeshSource(OpaqueSource):
 
         self.volume = BVH(vertices, indices, field_data)
 
+    def _initialize_zbuffer(self, zbuffer, camera):
+
+        shape = (camera.resolution[0], camera.resolution[1], 4)
+        if zbuffer is None:
+            empty = np.zeros(shape, dtype="float64")  # why not use camera.lens.new?
+            z = np.full(empty.shape[:2], np.inf, dtype="float64")
+            zbuffer = ZBuffer(empty, z)
+        elif zbuffer.rgba.shape != shape:
+            zbuffer = ZBuffer(zbuffer.rgba.reshape(shape), zbuffer.z.reshape(shape[:2]))
+        # why not an else?
+        return empty, zbuffer, z
+
     def render(self, camera, zbuffer=None):
         """Renders an image using the provided camera
 
@@ -837,15 +861,7 @@ class MeshSource(OpaqueSource):
 
         """
 
-        shape = (camera.resolution[0], camera.resolution[1], 4)
-        if zbuffer is None:
-            empty = np.empty(shape, dtype="float64")
-            z = np.empty(empty.shape[:2], dtype="float64")
-            empty[:] = 0.0
-            z[:] = np.inf
-            zbuffer = ZBuffer(empty, z)
-        elif zbuffer.rgba.shape != shape:
-            zbuffer = ZBuffer(zbuffer.rgba.reshape(shape), zbuffer.z.reshape(shape[:2]))
+        empty, z, zbuffer = self._initialize_zbuffer(zbuffer, camera)
         self.zbuffer = zbuffer
 
         self.sampler = new_mesh_sampler(camera, self, engine=self.engine)
@@ -1037,15 +1053,7 @@ class PointSource(OpaqueSource):
 
         """
         vertices = self.positions
-        if zbuffer is None:
-            empty = camera.lens.new_image(camera)
-            z = np.empty(empty.shape[:2], dtype="float64")
-            empty[:] = 0.0
-            z[:] = np.inf
-            zbuffer = ZBuffer(empty, z)
-        else:
-            empty = zbuffer.rgba
-            z = zbuffer.z
+        empty, z, zbuffer = self._initialize_zbuffer(zbuffer, camera)
 
         # DRAW SOME POINTS
         camera.lens.setup_box_properties(camera)
@@ -1158,15 +1166,7 @@ class LineSource(OpaqueSource):
 
         """
         vertices = self.positions
-        if zbuffer is None:
-            empty = camera.lens.new_image(camera)
-            z = np.empty(empty.shape[:2], dtype="float64")
-            empty[:] = 0.0
-            z[:] = np.inf
-            zbuffer = ZBuffer(empty, z)
-        else:
-            empty = zbuffer.rgba
-            z = zbuffer.z
+        empty, z, zbuffer = self._initialize_zbuffer(zbuffer, camera)
 
         # DRAW SOME LINES
         camera.lens.setup_box_properties(camera)
@@ -1488,18 +1488,9 @@ class CoordinateVectorSource(OpaqueSource):
             dz[:, :] = 0.0
 
         # Create a zbuffer if needed
-        if zbuffer is None:
-            empty = camera.lens.new_image(camera)
-            z = np.empty(empty.shape[:2], dtype="float64")
-            empty[:] = 0.0
-            z[:] = np.inf
-            zbuffer = ZBuffer(empty, z)
-        else:
-            empty = zbuffer.rgba
-            z = zbuffer.z
+        empty, z, zbuffer = self._initialize_zbuffer(zbuffer, camera)
 
         # Draw the vectors
-
         px = px.astype("int64")
         py = py.astype("int64")
 
