@@ -4,10 +4,6 @@ CF-Radial frontend tests
 
 
 """
-import os
-import shutil
-import tempfile
-
 from yt.frontends.cf_radial.data_structures import CFRadialDataset
 from yt.testing import (
     assert_almost_equal,
@@ -86,17 +82,21 @@ def check_domain(ds):
 def test_gridding():
     # loads up a radial dataset, which triggers the gridding.
 
-    # create temporary directory and grid file
-    tempdir = tempfile.mkdtemp()
-    grid_file = os.path.join(tempdir, "temp_grid.nc")
-
-    # this load will trigger the re-gridding and write out the gridded file
-    # from which data will be loaded.
-    ds = data_dir_load(cf_nongridded, kwargs={"storage_filename": grid_file})
-    assert os.path.exists(grid_file)
+    # this load will trigger the re-gridding
+    ds = data_dir_load(cf_nongridded)
 
     # check that the cartesian fields exist now
     for field in ["x", "y", "z"]:
         assert field in ds._handle.variables.keys()
 
-    shutil.rmtree(tempdir)
+    # test user-supplied args
+    g_kwargs = {
+        "grid_shape": (5, 20, 20),
+        "grid_limits": ((10000, 30000.0), (-40000.0, 00000.0), (-20000.0, 20000.0)),
+    }
+    ds = data_dir_load(cf_nongridded, kwargs=g_kwargs)
+
+    for i in range(3):
+        assert ds.domain_dimensions[i] == g_kwargs["grid_shape"][2 - i]
+        wid = g_kwargs["grid_limits"][2 - i][1] - g_kwargs["grid_limits"][2 - i][0]
+        assert ds.domain_width[i] == wid
