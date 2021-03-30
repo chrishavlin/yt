@@ -11,6 +11,7 @@ from yt.units.unit_registry import UnitRegistry
 from yt.units.yt_array import YTArray, YTQuantity
 from yt.utilities.exceptions import YTNotInsideNotebook
 from yt.visualization._commons import get_canvas, validate_image_name
+from yt.visualization.volume_rendering.blenders import Attenuate
 
 from .camera import Camera
 from .render_source import (
@@ -75,6 +76,7 @@ class Scene:
     _current = None
     _camera = None
     _unit_registry = None
+    _post_effects = None
 
     def __init__(self):
         r"""Create a new Scene instance"""
@@ -540,6 +542,9 @@ class Scene:
             source.render(camera, zbuffer=opaque)
             im = source.zbuffer.rgba
 
+        if self._post_effects:
+            opaque = self._apply_post(opaque)
+
         for _, source in self.transparent_sources:
             im = source.render(camera, zbuffer=opaque)
             opaque.rgba = im
@@ -547,6 +552,24 @@ class Scene:
         # rotate image 180 degrees so orientation agrees with e.g.
         # a PlotWindow plot
         return np.rot90(im, k=2)
+
+    def add_attenuation(self, Cfog=(0.0, 0.0, 0.0, 1.0), att_fac=0.5, method="exp"):
+        if self._post_effects is None:
+            self._post_effects = []
+
+        effect = (Attenuate, (Cfog, att_fac, method))
+
+        self._post_effects.append(effect)
+
+    def _apply_post(self, zbuffer):
+        if self._post_effects:
+            for cls, args in self._post_effects:
+                post_effect = cls(*args)
+                zbuffer = post_effect.apply(zbuffer)
+        return zbuffer
+
+    def clear_effects(self):
+        self._post_effects = []
 
     def add_camera(self, data_source=None, lens_type="plane-parallel", auto=False):
         r"""Add a new camera to the Scene.
