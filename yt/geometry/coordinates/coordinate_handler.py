@@ -283,6 +283,21 @@ class CoordinateHandler:
         if minval >= 0:
             buff[np.isnan(buff)] = np.inf
 
+    def centered_projection(self, projection, center_xy, axis):
+        # adjusts the projection so that center_xy is centered. see the
+        # GeographicCoordinateHandler for a use version.
+        return projection
+
+    def get_bounds(self, display_center, width, axis):
+        xax = self.x_axis[axis]
+        yax = self.y_axis[axis]
+        bounds = (
+            display_center[xax] - width[0] / 2,
+            display_center[xax] + width[0] / 2,
+            display_center[yax] - width[1] / 2,
+            display_center[yax] + width[1] / 2,
+        )
+        return bounds
 
 def cartesian_to_cylindrical(coord, center=(0, 0, 0)):
     c2 = np.zeros_like(coord)

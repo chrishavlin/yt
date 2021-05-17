@@ -393,6 +393,13 @@ class GeographicCoordinateHandler(CoordinateHandler):
         self._data_projection = dpj
         return dpj
 
+    def centered_projection(self, projection, center_xy, axis):
+        # when plotting in map view (fixed altitude or fixed depth), we need to set
+        # the center longitude.
+        if self.axis_name[axis] == self.radial_axis:
+            return projection, (), {"central_longitude": float(center_xy[0].value)}
+        return projection
+
     _data_transform = None
 
     @property
@@ -453,6 +460,25 @@ class GeographicCoordinateHandler(CoordinateHandler):
             ri = self.axis_id[self.radial_axis]
             width = [self.ds.domain_width[ri], 2.0 * self.ds.domain_width[ri]]
         return width
+
+    def get_bounds(self, display_center, width, axis):
+
+        bounds = super().get_bounds(display_center, width, axis)
+
+        if self.axis_name[axis] == self.radial_axis:
+            # this is sufficient for a global plot. but is it general enough
+            # for a smaller region that overlaps the +/- 180 longitude?
+            min_lon = self.ds.quan(-180, "code_length")
+            max_lon = self.ds.quan(180, "code_length")
+
+            if bounds[0] < min_lon:
+                dlon = abs(bounds[0] - min_lon)
+                bounds = (min_lon, bounds[1]+dlon) + bounds[2:]
+
+            if bounds[1] > max_lon:
+                dlon = abs(bounds[1] - max_lon)
+                bounds = (bounds[0] - dlon, max_lon) + bounds[2:]
+        return bounds
 
 
 class InternalGeographicCoordinateHandler(GeographicCoordinateHandler):

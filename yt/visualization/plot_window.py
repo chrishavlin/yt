@@ -10,6 +10,7 @@ from more_itertools import always_iterable, zip_equal
 from mpl_toolkits.axes_grid1 import ImageGrid
 from unyt.exceptions import UnitConversionError
 
+from yt.geometry.coordinates.geographic_coordinates import GeographicCoordinateHandler
 from yt._maintenance.deprecation import issue_deprecation_warning
 from yt.config import ytcfg
 from yt.data_objects.image_array import ImageArray
@@ -61,14 +62,7 @@ except ImportError:
 def get_window_parameters(axis, center, width, ds):
     width = ds.coordinates.sanitize_width(axis, width, None)
     center, display_center = ds.coordinates.sanitize_center(center, axis)
-    xax = ds.coordinates.x_axis[axis]
-    yax = ds.coordinates.y_axis[axis]
-    bounds = (
-        display_center[xax] - width[0] / 2,
-        display_center[xax] + width[0] / 2,
-        display_center[yax] - width[1] / 2,
-        display_center[yax] + width[1] / 2,
-    )
+    bounds = ds.coordinates.get_bounds(display_center, width, axis)
     return (bounds, center, display_center)
 
 
@@ -204,7 +198,7 @@ class PlotWindow(ImagePlotContainer):
         self.override_fields = list(set(fields).intersection(set(skip)))
         self.fields = [f for f in fields if f not in skip]
         super().__init__(data_source, window_size, fontsize)
-
+        self._is_map = self._check_if_map()
         self._set_window(bounds)  # this automatically updates the data and plot
         self.origin = origin
         if self.data_source.center is not None and not oblique:
@@ -220,7 +214,10 @@ class PlotWindow(ImagePlotContainer):
             axname = self.ds.coordinates.axis_name[ax]
             transform = self.ds.coordinates.data_transform[axname]
             projection = self.ds.coordinates.data_projection[axname]
+            projection = self.ds.coordinates.centered_projection(projection, center, ax)
             self._projection = get_mpl_transform(projection)
+            # if cartopy and fixed depth/altitude
+            # transform = (transform, (), {"central_longitude": float(center[0].value)})
             self._transform = get_mpl_transform(transform)
 
         for field in self.data_source._determine_fields(self.fields):
@@ -602,9 +599,6 @@ class PlotWindow(ImagePlotContainer):
         """
 
         self._projection = get_mpl_transform(mpl_proj)
-        axname = self.ds.coordinates.axis_name[self.data_source.axis]
-        transform = self.ds.coordinates.data_transform[axname]
-        self._transform = get_mpl_transform(transform)
         return self
 
     @invalidate_data
@@ -620,16 +614,17 @@ class PlotWindow(ImagePlotContainer):
             The x and y bounds, in the format (x0, x1, y0, y1)
 
         """
-        if self.center is not None:
-            dx = bounds[1] - bounds[0]
-            dy = bounds[3] - bounds[2]
-            self.xlim = (self.center[0] - dx / 2.0, self.center[0] + dx / 2.0)
-            self.ylim = (self.center[1] - dy / 2.0, self.center[1] + dy / 2.0)
-        else:
+
+        if self._is_map or self.center is None:
             self.xlim = tuple(bounds[0:2])
             self.ylim = tuple(bounds[2:4])
             if len(bounds) == 6:
                 self.zlim = tuple(bounds[4:6])
+        else:
+            dx = bounds[1] - bounds[0]
+            dy = bounds[3] - bounds[2]
+            self.xlim = (self.center[0] - dx / 2.0, self.center[0] + dx / 2.0)
+            self.ylim = (self.center[1] - dy / 2.0, self.center[1] + dy / 2.0)
         mylog.info("xlim = %f %f", self.xlim[0], self.xlim[1])
         mylog.info("ylim = %f %f", self.ylim[0], self.ylim[1])
         if hasattr(self, "zlim"):
@@ -837,6 +832,12 @@ class PlotWindow(ImagePlotContainer):
             fields=fields, other_keys=other_keys, length_unit=length_unit, **kwargs
         )
 
+    def _check_if_map(self):
+        if isinstance(self.ds.coordinates, GeographicCoordinateHandler):
+            ax = self.data_source.axis
+            axname = self.ds.coordinates.axis_name[ax]
+            return self.ds.coordinates.radial_axis == axname
+        return False
 
 class PWViewerMPL(PlotWindow):
     """Viewer using matplotlib as a backend via the WindowPlotMPL."""
