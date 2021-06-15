@@ -203,9 +203,14 @@ class YTSelectionContainer(YTDataContainer, ParallelAnalysisInterface):
             particles, self, self._current_chunk
         )
 
+        # for f, v in read_particles.items():
+        #     self.field_data[f] = self.ds.arr(v, units=finfos[f].units)
+        #     self.field_data[f].convert_to_units(finfos[f].output_units)
+        from unyt import dask_array
+
         for f, v in read_particles.items():
-            self.field_data[f] = self.ds.arr(v, units=finfos[f].units)
-            self.field_data[f].convert_to_units(finfos[f].output_units)
+            da_f = dask_array.unyt_from_dask(v, units=finfos[f].units, registry=self.ds.unit_registry)
+            self.field_data[f] = da_f.to(finfos[f].output_units)
 
         fields_to_generate += gen_fluids + gen_particles
         self._generate_fields(fields_to_generate)
@@ -258,7 +263,7 @@ class YTSelectionContainer(YTDataContainer, ParallelAnalysisInterface):
                             units,
                         )
                     try:
-                        fd.convert_to_units(fi.units)
+                        fd = fd.to(fi.units)
                     except AttributeError:
                         # If the field returns an ndarray, coerce to a
                         # dimensionless YTArray and verify that field is

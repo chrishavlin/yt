@@ -184,6 +184,68 @@ class BaseIOHandler:
             shape = (ra_size,)
         return shape
 
+    def _read_single_data_file(self, data_file, ptf):
+        raise NotImplemented 
+
+    def read_from_datafiles(self, data_files, fields):
+        
+        # We first need a set of masks for each particle type
+        ptf = defaultdict(list)  # ptype -> on-disk fields to read        
+        field_maps = defaultdict(list)  # ptype -> fields (including unions)
+        unions = self.ds.particle_unions
+
+        # What we need is a mapping from particle types to return types
+        for field in fields:
+            ftype, fname = field
+            # We should add a check for p.fparticle_unions or something here
+            if ftype in unions:
+                for pt in unions[ftype]:
+                    ptf[pt].append(fname)
+                    field_maps[pt, fname].append(field)
+            else:
+                ptf[ftype].append(fname)
+                field_maps[field].append(field)
+
+        
+        rv = defaultdict(list)  # field -> chunked dask array
+        fieldsize = defaultdict(lambda: 0)  # field -> size of return value
+        for data_file in data_files:                        
+            delayed_chunk = dask_delayed(self._read_single_data_file)(data_file, ptf)
+
+            ra_size = self._read_single_data_file_ptype_counts(data_file, ptype)
+            # delayed_chunk is a dict for a single chunk by field
+            # e.g., chunk_data[('PartType4','Density')] to get vals for this chunk
+            # but remember that they are delayed objs at this point (hence using
+            # a delayed chunk_data.get below)
+            for ptype, fieldlist in ptf.items():                
+                if ra_size[ptype]:
+                    for field in fieldlist:
+                        pfld = (ptype, field)
+                        shape = self._get_array_shape(field, ra_size[ptype])
+                        # retrieve the values from the delayed_chunk dict:
+                        vals = dask_delayed(delayed_chunk.get)(pfld)
+                        # append values to the proper mapped field list
+                        for mapped_field in field_maps[pfld]:
+                            rv[mapped_field].append(
+                                dask_array.from_delayed(
+                                    vals, shape, dtype="float64"
+                                )
+                            )
+                            # track the across-chunk size for the mapped field
+                            fieldsize[mapped_field] += ra_size[ptype]
+
+        # combine the delayed chunk-arrays into single delayed dask arrays by field
+        for field in fields:
+            if fieldsize[field]:
+                if len(rv[field]) > 1:
+                    # multiple chunks have fields, create single dask array
+                    rv[field] = dask_array.concatenate(rv[field], axis=0)
+                else:
+                    # only one chunk has a field
+                    rv[field] = rv[field][0]
+
+        return rv    
+
     def _read_particle_selection(self, chunks, selector, fields):
         rv = {}  # in memory field-dict (output)
         # We first need a set of masks for each particle type
@@ -250,7 +312,7 @@ class BaseIOHandler:
                     rv[field] = rv_chunks[field][0]
 
         # to do: future kwarg to enable return of dask arrays
-        return_dask_array = False
+        return_dask_array = True
         if return_dask_array is False:
             # return flat np arrays in memory
             for field in fields:
@@ -265,8 +327,6 @@ class BaseIOHandler:
                     rv[field] = np.empty(
                         self._get_array_shape(field[1], 0), dtype="float64"
                     )
-        # else:
-        #     to do: return the delayed arrays or call .persist()?
 
         return rv
 

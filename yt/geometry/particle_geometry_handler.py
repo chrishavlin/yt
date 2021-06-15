@@ -287,21 +287,25 @@ class ParticleIndex(Index):
         ds.field_units.update(units)
         ds.particle_types_raw = ds.particle_types
 
+    def _identify_file_masks(self, dobj):        
+        # returns a list of files that map to regions intersected by a selector object
+        if getattr(dobj.selector, "is_all_data", False):
+            nfiles = self.regions.nfiles
+            dfi = np.arange(nfiles)
+        else:
+            dfi, file_masks, addfi = self.regions.identify_file_masks(
+                dobj.selector
+            )
+            nfiles = len(file_masks)
+        return dfi, nfiles
+            
     def _identify_base_chunk(self, dobj):
         # Must check that chunk_info contains the right number of ghost zones
         if getattr(dobj, "_chunk_info", None) is None:
             if isinstance(dobj, ParticleContainer):
                 dobj._chunk_info = [dobj]
             else:
-                # TODO: only return files
-                if getattr(dobj.selector, "is_all_data", False):
-                    nfiles = self.regions.nfiles
-                    dfi = np.arange(nfiles)
-                else:
-                    dfi, file_masks, addfi = self.regions.identify_file_masks(
-                        dobj.selector
-                    )
-                    nfiles = len(file_masks)
+                dfi, nfiles = self._identify_file_masks(dobj)                
                 dobj._chunk_info = [None for _ in range(nfiles)]
                 for i in range(nfiles):
                     domain_id = i + 1
@@ -376,3 +380,48 @@ class ParticleIndex(Index):
         in cases where we are reloading the index from a sidecar file.
         """
         pass
+
+    def _read_particle_fields(self, fields, dobj, chunk=None):
+
+        if len(fields) == 0:
+            return {}, []
+        fields_to_read, fields_to_generate = self._split_fields(fields)
+        if len(fields_to_read) == 0:
+            return {}, fields_to_generate
+
+
+        # assemble the self.data_files that intersect the selector
+        dfi, nfiles = self._identify_file_masks(dobj) 
+        if nfiles == 0:
+            return {}, fields_to_generate
+        data_file_subset = self.data_files[dfi]
+        
+        # add on coordinates and smoothing_length to fields for every particle type if they're not there
+        # so they will be available for our selector
+        for field in fields_to_read:
+            if (field[0], "Coordinates") not in fields_to_read:
+                fields_to_read.append((field[0], "Coordinates"))
+            if (field[0], "smoothing_length") not in fields:
+                fields_to_read.append((field[0], "smoothing_length"))
+
+        # read all the data from the intersecting data_files into delayed dask arrays
+        fields_to_return = self.io.read_from_datafiles(data_file_subset, fields_to_read)
+        
+        # find the particles within the selector 
+        fields_to_return = self.apply_selector_mask(fields_to_return, dobj)
+
+        return fields_to_return, fields_to_generate 
+        
+    def apply_selector_mask(self, fields_to_return, dobj):
+
+        ptype_masks = {} 
+        sel = dobj.selector
+        for field, vals in fields_to_return.items():
+            if field[0] not in ptype_masks:
+                pos = fields_to_return[(field[0],"Coordinates")]
+                smo = fields_to_return[(field[0],"smoothing_length")]
+                ptype_masks[field[0]] = pos[:,0].map_blocks(sel.select_points, pos[:,1], pos[:,2], smo, meta=np.array((), dtype=bool))
+
+            fields_to_return[field] = vals[ptype_masks[field[0]],]
+                
+        

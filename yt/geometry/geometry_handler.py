@@ -209,7 +209,7 @@ class Index(ParallelAnalysisInterface, abc.ABC):
             chunks, selector, fields_to_read
         )
         return fields_to_return, fields_to_generate
-
+         
     def _read_fluid_fields(self, fields, dobj, chunk=None):
         if len(fields) == 0:
             return {}, []

@@ -67,6 +67,78 @@ class IOHandlerGadgetHDF5(IOHandlerSPH):
                 yield ptype, (x, y, z), hsml
             f.close()
 
+
+    def _datafile_has_ptf(self, data_file, ptf):
+        """
+        checks a data_file object to see if any particle types in ptf dict 
+        have a non-zero particle count in this file. use to avoid opening
+        files if we know the particle counts a priori (the index construction
+        does not differentiate by particle type).        
+        """
+        for ptype, field_list in sorted(ptf.items()):
+            if data_file.total_particles[ptype] > 0:
+                # at least one ptype has particle types, need to read this file
+                return True 
+        return False
+
+    
+    def _read_particle_coords_from_open(self, open_file_handle, start, end):
+        return open_file_handle["Coordinates"][start: end]
+
+    def _read_single_data_file_ptype_counts(self, data_file, ptypes):        
+        return data_file.total_particles
+
+    def _read_single_data_file(self, data_file, ptf):
+        """
+        reads fields from a single data_file object.
+
+        selector masks are applied after.
+        """
+        # if self._datafile_has_ptf(data_file, ptf):
+        si, ei = data_file.start, data_file.end
+        f = h5py.File(data_file.filename, mode="r")
+        for ptype, field_list in sorted(ptf.items()):
+            if data_file.total_particles[ptype] == 0:
+                continue
+            g = f[f"/{ptype}"]
+                            
+            for field in field_list:
+
+                if field in ("Mass", "Masses") and ptype not in self.var_mass:
+                    data = np.empty(mask_sum, dtype="float64")
+                    ind = self._known_ptypes.index(ptype)
+                    data[:] = self.ds["Massarr"][ind]
+                elif field in self._element_names:
+                    rfield = "ElementAbundance/" + field
+                    data = g[rfield][si:ei]
+                elif field.startswith("Metallicity_"):
+                    col = int(field.rsplit("_", 1)[-1])
+                    data = g["Metallicity"][si:ei, col]
+                elif field.startswith("GFM_Metals_"):
+                    col = int(field.rsplit("_", 1)[-1])
+                    data = g["GFM_Metals"][si:ei, col]
+                elif field.startswith("Chemistry_"):
+                    col = int(field.rsplit("_", 1)[-1])
+                    data = g["ChemistryAbundances"][si:ei, col]
+                elif field == "smoothing_length":
+                    # This is for frontends which do not store
+                    # the smoothing length on-disk, so we do not
+                    # attempt to read them, but instead assume
+                    # that they are calculated in _get_smoothing_length.                
+                    data = self._get_smoothing_length(
+                        data_file,
+                        g["Coordinates"].dtype,
+                        g["Coordinates"].shape,
+                    ).astype("float64")[si:ei]
+                elif field == "coordinates":    
+                    data = self._read_particle_coords_from_open(g, data_file.si, data_file.ei)
+                else:
+                    data = g[field][si:ei]
+
+                yield (ptype, field), data
+        f.close()
+
+
     def _yield_coordinates(self, data_file, needed_ptype=None):
         si, ei = data_file.start, data_file.end
         f = h5py.File(data_file.filename, mode="r")
