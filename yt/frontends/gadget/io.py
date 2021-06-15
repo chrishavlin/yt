@@ -97,6 +97,7 @@ class IOHandlerGadgetHDF5(IOHandlerSPH):
         # if self._datafile_has_ptf(data_file, ptf):
         si, ei = data_file.start, data_file.end
         f = h5py.File(data_file.filename, mode="r")
+        out_dict = {}
         for ptype, field_list in sorted(ptf.items()):
             if data_file.total_particles[ptype] == 0:
                 continue
@@ -135,8 +136,13 @@ class IOHandlerGadgetHDF5(IOHandlerSPH):
                 else:
                     data = g[field][si:ei]
 
-                yield (ptype, field), data
-        f.close()
+                # switch the byte order to native
+                dt = data.dtype.newbyteorder("N")  # Native
+                newdata = np.empty(data.shape, dtype=dt)
+                newdata[:] = data
+                
+                out_dict[(ptype, field)] = newdata
+        return out_dict
 
 
     def _yield_coordinates(self, data_file, needed_ptype=None):

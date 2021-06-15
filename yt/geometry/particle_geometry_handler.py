@@ -394,26 +394,30 @@ class ParticleIndex(Index):
         dfi, nfiles = self._identify_file_masks(dobj) 
         if nfiles == 0:
             return {}, fields_to_generate
-        data_file_subset = self.data_files[dfi]
+        data_file_subset = [self.data_files[df_i] for df_i in dfi]
         
         # add on coordinates and smoothing_length to fields for every particle type if they're not there
         # so they will be available for our selector
-        for field in fields_to_read:
-            if (field[0], "Coordinates") not in fields_to_read:
-                fields_to_read.append((field[0], "Coordinates"))
-            if (field[0], "smoothing_length") not in fields:
-                fields_to_read.append((field[0], "smoothing_length"))
+        is_all_data = getattr(dobj.selector, "is_all_data", False)
+        if is_all_data is False:
+            for field in fields_to_read:
+                if (field[0], "Coordinates") not in fields_to_read:
+                    fields_to_read.append((field[0], "Coordinates"))
+                if (field[0], "smoothing_length") not in fields_to_read:
+                    fields_to_read.append((field[0], "smoothing_length"))
 
         # read all the data from the intersecting data_files into delayed dask arrays
         fields_to_return = self.io.read_from_datafiles(data_file_subset, fields_to_read)
         
         # find the particles within the selector 
-        fields_to_return = self.apply_selector_mask(fields_to_return, dobj)
+        if is_all_data is False:
+            fields_to_return = self.apply_selector_mask(fields_to_return, dobj)
 
         return fields_to_return, fields_to_generate 
         
     def apply_selector_mask(self, fields_to_return, dobj):
 
+        # if dob != all_data :
         ptype_masks = {} 
         sel = dobj.selector
         for field, vals in fields_to_return.items():
@@ -423,5 +427,7 @@ class ParticleIndex(Index):
                 ptype_masks[field[0]] = pos[:,0].map_blocks(sel.select_points, pos[:,1], pos[:,2], smo, meta=np.array((), dtype=bool))
 
             fields_to_return[field] = vals[ptype_masks[field[0]],]
+        
+        return fields_to_return
                 
         

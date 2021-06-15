@@ -207,12 +207,13 @@ class BaseIOHandler:
                 field_maps[field].append(field)
 
         
-        rv = defaultdict(list)  # field -> chunked dask array
+        rv_c = defaultdict(list)  # field -> chunked dask array
+        rv = defaultdict(list)  # the final output
         fieldsize = defaultdict(lambda: 0)  # field -> size of return value
         for data_file in data_files:                        
             delayed_chunk = dask_delayed(self._read_single_data_file)(data_file, ptf)
 
-            ra_size = self._read_single_data_file_ptype_counts(data_file, ptype)
+            ra_size = self._read_single_data_file_ptype_counts(data_file, list(ptf.keys()))
             # delayed_chunk is a dict for a single chunk by field
             # e.g., chunk_data[('PartType4','Density')] to get vals for this chunk
             # but remember that they are delayed objs at this point (hence using
@@ -226,7 +227,7 @@ class BaseIOHandler:
                         vals = dask_delayed(delayed_chunk.get)(pfld)
                         # append values to the proper mapped field list
                         for mapped_field in field_maps[pfld]:
-                            rv[mapped_field].append(
+                            rv_c[mapped_field].append(
                                 dask_array.from_delayed(
                                     vals, shape, dtype="float64"
                                 )
@@ -237,12 +238,12 @@ class BaseIOHandler:
         # combine the delayed chunk-arrays into single delayed dask arrays by field
         for field in fields:
             if fieldsize[field]:
-                if len(rv[field]) > 1:
+                if len(rv_c[field]) > 1:
                     # multiple chunks have fields, create single dask array
-                    rv[field] = dask_array.concatenate(rv[field], axis=0)
+                    rv[field] = dask_array.concatenate(rv_c[field], axis=0)
                 else:
                     # only one chunk has a field
-                    rv[field] = rv[field][0]
+                    rv[field] = rv_c[field][0]
 
         return rv    
 

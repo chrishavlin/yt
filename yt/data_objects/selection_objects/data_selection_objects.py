@@ -209,6 +209,9 @@ class YTSelectionContainer(YTDataContainer, ParallelAnalysisInterface):
         from unyt import dask_array
 
         for f, v in read_particles.items():
+            if f not in finfos:
+                # coordinates and smoothing length are added when doing selections that are not all_data     
+                finfos[f] = self.ds._get_field_info(f[0], f[1])
             da_f = dask_array.unyt_from_dask(v, units=finfos[f].units, registry=self.ds.unit_registry)
             self.field_data[f] = da_f.to(finfos[f].output_units)
 
