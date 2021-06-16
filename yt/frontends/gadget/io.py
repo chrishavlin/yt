@@ -1,5 +1,6 @@
 import os
 from collections import defaultdict
+from yt.utilities.answer_testing.framework import data_dir_load
 
 import numpy as np
 
@@ -67,7 +68,6 @@ class IOHandlerGadgetHDF5(IOHandlerSPH):
                 yield ptype, (x, y, z), hsml
             f.close()
 
-
     def _datafile_has_ptf(self, data_file, ptf):
         """
         checks a data_file object to see if any particle types in ptf dict 
@@ -80,70 +80,6 @@ class IOHandlerGadgetHDF5(IOHandlerSPH):
                 # at least one ptype has particle types, need to read this file
                 return True 
         return False
-
-    
-    def _read_particle_coords_from_open(self, open_file_handle, start, end):
-        return open_file_handle["Coordinates"][start: end]
-
-    def _read_single_data_file_ptype_counts(self, data_file, ptypes):        
-        return data_file.total_particles
-
-    def _read_single_data_file(self, data_file, ptf):
-        """
-        reads fields from a single data_file object.
-
-        selector masks are applied after.
-        """
-        # if self._datafile_has_ptf(data_file, ptf):
-        si, ei = data_file.start, data_file.end
-        f = h5py.File(data_file.filename, mode="r")
-        out_dict = {}
-        for ptype, field_list in sorted(ptf.items()):
-            if data_file.total_particles[ptype] == 0:
-                continue
-            g = f[f"/{ptype}"]
-                            
-            for field in field_list:
-
-                if field in ("Mass", "Masses") and ptype not in self.var_mass:
-                    data = np.empty(mask_sum, dtype="float64")
-                    ind = self._known_ptypes.index(ptype)
-                    data[:] = self.ds["Massarr"][ind]
-                elif field in self._element_names:
-                    rfield = "ElementAbundance/" + field
-                    data = g[rfield][si:ei]
-                elif field.startswith("Metallicity_"):
-                    col = int(field.rsplit("_", 1)[-1])
-                    data = g["Metallicity"][si:ei, col]
-                elif field.startswith("GFM_Metals_"):
-                    col = int(field.rsplit("_", 1)[-1])
-                    data = g["GFM_Metals"][si:ei, col]
-                elif field.startswith("Chemistry_"):
-                    col = int(field.rsplit("_", 1)[-1])
-                    data = g["ChemistryAbundances"][si:ei, col]
-                elif field == "smoothing_length":
-                    # This is for frontends which do not store
-                    # the smoothing length on-disk, so we do not
-                    # attempt to read them, but instead assume
-                    # that they are calculated in _get_smoothing_length.                
-                    data = self._get_smoothing_length(
-                        data_file,
-                        g["Coordinates"].dtype,
-                        g["Coordinates"].shape,
-                    ).astype("float64")[si:ei]
-                elif field == "coordinates":    
-                    data = self._read_particle_coords_from_open(g, data_file.si, data_file.ei)
-                else:
-                    data = g[field][si:ei]
-
-                # switch the byte order to native
-                dt = data.dtype.newbyteorder("N")  # Native
-                newdata = np.empty(data.shape, dtype=dt)
-                newdata[:] = data
-                
-                out_dict[(ptype, field)] = newdata
-        return out_dict
-
 
     def _yield_coordinates(self, data_file, needed_ptype=None):
         si, ei = data_file.start, data_file.end
@@ -236,74 +172,60 @@ class IOHandlerGadgetHDF5(IOHandlerSPH):
             hsml[:] = ds
             return hsml
 
-    def _read_particle_fields(self, chunks, ptf, selector):
-        # Now we have all the sizes, and we can allocate
-        data_files = set()
-        for chunk in chunks:
-            for obj in chunk.objs:
-                data_files.update(obj.data_files)
-        for data_file in sorted(data_files, key=lambda x: (x.filename, x.start)):
-            si, ei = data_file.start, data_file.end
-            f = h5py.File(data_file.filename, mode="r")
-            for ptype, field_list in sorted(ptf.items()):
-                if data_file.total_particles[ptype] == 0:
-                    continue
-                g = f[f"/{ptype}"]
-                if getattr(selector, "is_all_data", False):
-                    mask = slice(None, None, None)
-                    mask_sum = data_file.total_particles[ptype]
-                    hsmls = None
+    def _read_particle_fields(self, data_file, ptf):
+        """
+        reads fields from a single data_file object.
+
+        selector masks are applied after.
+        """
+        # if self._datafile_has_ptf(data_file, ptf):
+        si, ei = data_file.start, data_file.end
+        f = h5py.File(data_file.filename, mode="r")
+        out_dict = {}
+        for ptype, field_list in sorted(ptf.items()):
+            if data_file.total_particles[ptype] == 0:
+                continue
+            g = f[f"/{ptype}"]
+                            
+            for field in field_list:
+
+                if field in ("Mass", "Masses") and ptype not in self.var_mass:                    
+                    ind = self._known_ptypes.index(ptype)
+                    data = self.ds["Massarr"][ind]
+                elif field in self._element_names:
+                    rfield = "ElementAbundance/" + field
+                    data = g[rfield][si:ei]
+                elif field.startswith("Metallicity_"):
+                    col = int(field.rsplit("_", 1)[-1])
+                    data = g["Metallicity"][si:ei, col]
+                elif field.startswith("GFM_Metals_"):
+                    col = int(field.rsplit("_", 1)[-1])
+                    data = g["GFM_Metals"][si:ei, col]
+                elif field.startswith("Chemistry_"):
+                    col = int(field.rsplit("_", 1)[-1])
+                    data = g["ChemistryAbundances"][si:ei, col]
+                elif field == "smoothing_length":
+                    # This is for frontends which do not store
+                    # the smoothing length on-disk, so we do not
+                    # attempt to read them, but instead assume
+                    # that they are calculated in _get_smoothing_length.                
+                    data = self._get_smoothing_length(
+                        data_file,
+                        g["Coordinates"].dtype,
+                        g["Coordinates"].shape,
+                    ).astype("float64")[si:ei]
+                elif field == "coordinates":   
+                    data = g["Coordinates"][start: end] 
                 else:
-                    coords = g["Coordinates"][si:ei].astype("float64")
-                    if ptype == "PartType0":
-                        hsmls = self._get_smoothing_length(
-                            data_file, g["Coordinates"].dtype, g["Coordinates"].shape
-                        ).astype("float64")
-                    else:
-                        hsmls = 0.0
-                    mask = selector.select_points(
-                        coords[:, 0], coords[:, 1], coords[:, 2], hsmls
-                    )
-                    if mask is not None:
-                        mask_sum = mask.sum()
-                    del coords
-                if mask is None:
-                    continue
-                for field in field_list:
+                    data = g[field][si:ei]
 
-                    if field in ("Mass", "Masses") and ptype not in self.var_mass:
-                        data = np.empty(mask_sum, dtype="float64")
-                        ind = self._known_ptypes.index(ptype)
-                        data[:] = self.ds["Massarr"][ind]
-                    elif field in self._element_names:
-                        rfield = "ElementAbundance/" + field
-                        data = g[rfield][si:ei][mask, ...]
-                    elif field.startswith("Metallicity_"):
-                        col = int(field.rsplit("_", 1)[-1])
-                        data = g["Metallicity"][si:ei, col][mask]
-                    elif field.startswith("GFM_Metals_"):
-                        col = int(field.rsplit("_", 1)[-1])
-                        data = g["GFM_Metals"][si:ei, col][mask]
-                    elif field.startswith("Chemistry_"):
-                        col = int(field.rsplit("_", 1)[-1])
-                        data = g["ChemistryAbundances"][si:ei, col][mask]
-                    elif field == "smoothing_length":
-                        # This is for frontends which do not store
-                        # the smoothing length on-disk, so we do not
-                        # attempt to read them, but instead assume
-                        # that they are calculated in _get_smoothing_length.
-                        if hsmls is None:
-                            hsmls = self._get_smoothing_length(
-                                data_file,
-                                g["Coordinates"].dtype,
-                                g["Coordinates"].shape,
-                            ).astype("float64")
-                        data = hsmls[mask]
-                    else:
-                        data = g[field][si:ei][mask, ...]
-
-                    yield (ptype, field), data
-            f.close()
+                # switch the byte order to native
+                dt = data.dtype.newbyteorder("N")  # Native
+                newdata = np.empty(data.shape, dtype=dt)
+                newdata[:] = data
+                
+                out_dict[(ptype, field)] = newdata
+        return out_dict        
 
     def _count_particles(self, data_file):
         si, ei = data_file.start, data_file.end
@@ -448,51 +370,29 @@ class IOHandlerGadgetBinary(IOHandlerSPH):
                 yield ptype, (pos[:, 0], pos[:, 1], pos[:, 2]), hsml
             f.close()
 
-    def _read_particle_fields(self, chunks, ptf, selector):
-        data_files = set()
-        for chunk in chunks:
-            for obj in chunk.objs:
-                data_files.update(obj.data_files)
-        for data_file in sorted(data_files, key=lambda x: (x.filename, x.start)):
-            poff = data_file.field_offsets
-            tp = data_file.total_particles
-            f = open(data_file.filename, "rb")
-            for ptype, field_list in sorted(ptf.items()):
-                if tp[ptype] == 0:
+    def _read_particle_fields(self, data_file, ptf):
+
+        poff = data_file.field_offsets
+        tp = data_file.total_particles
+        datadict = {}
+        f = open(data_file.filename, "rb")
+        for ptype, field_list in sorted(ptf.items()):
+            if tp[ptype] == 0:
+                continue
+            
+            for field in field_list:
+                if field == "Mass" and ptype not in self.var_mass:
+                    size = data_file.total_particles[ptype]
+                    data = np.empty(size, dtype="float64")
+                    m = self.ds.parameters["Massarr"][self._ptypes.index(ptype)]
+                    data[:] = m
+                    datadict[(ptype, field)] = data                    
                     continue
-                if getattr(selector, "is_all_data", False):
-                    mask = slice(None, None, None)
-                else:
-                    f.seek(poff[ptype, "Coordinates"], os.SEEK_SET)
-                    pos = self._read_field_from_file(f, tp[ptype], "Coordinates")
-                    if ptype == self.ds._sph_ptypes[0]:
-                        f.seek(poff[ptype, "SmoothingLength"], os.SEEK_SET)
-                        hsml = self._read_field_from_file(
-                            f, tp[ptype], "SmoothingLength"
-                        )
-                    else:
-                        hsml = 0.0
-                    mask = selector.select_points(pos[:, 0], pos[:, 1], pos[:, 2], hsml)
-                    del pos
-                    del hsml
-                if mask is None:
-                    continue
-                for field in field_list:
-                    if field == "Mass" and ptype not in self.var_mass:
-                        if getattr(selector, "is_all_data", False):
-                            size = data_file.total_particles[ptype]
-                        else:
-                            size = mask.sum()
-                        data = np.empty(size, dtype="float64")
-                        m = self.ds.parameters["Massarr"][self._ptypes.index(ptype)]
-                        data[:] = m
-                        yield (ptype, field), data
-                        continue
-                    f.seek(poff[ptype, field], os.SEEK_SET)
-                    data = self._read_field_from_file(f, tp[ptype], field)
-                    data = data[mask, ...]
-                    yield (ptype, field), data
-            f.close()
+                f.seek(poff[ptype, field], os.SEEK_SET)
+                datadict[(ptype, field)] = self._read_field_from_file(f, tp[ptype], field)                
+                
+        f.close()
+        return datadict
 
     def _read_field_from_file(self, f, count, name):
         if count == 0:

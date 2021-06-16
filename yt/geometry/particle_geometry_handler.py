@@ -407,7 +407,7 @@ class ParticleIndex(Index):
                     fields_to_read.append((field[0], "smoothing_length"))
 
         # read all the data from the intersecting data_files into delayed dask arrays
-        fields_to_return = self.io.read_from_datafiles(data_file_subset, fields_to_read)
+        fields_to_return = self.io._read_from_datafiles(data_file_subset, fields_to_read)
         
         # find the particles within the selector 
         if is_all_data is False:
@@ -416,8 +416,7 @@ class ParticleIndex(Index):
         return fields_to_return, fields_to_generate 
         
     def apply_selector_mask(self, fields_to_return, dobj):
-
-        # if dob != all_data :
+        # applies a selector mask to each dask-chunk
         ptype_masks = {} 
         sel = dobj.selector
         for field, vals in fields_to_return.items():
