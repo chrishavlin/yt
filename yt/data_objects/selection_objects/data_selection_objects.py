@@ -206,14 +206,18 @@ class YTSelectionContainer(YTDataContainer, ParallelAnalysisInterface):
         # for f, v in read_particles.items():
         #     self.field_data[f] = self.ds.arr(v, units=finfos[f].units)
         #     self.field_data[f].convert_to_units(finfos[f].output_units)
-        from unyt import dask_array
-
+        
+        return_unyt = True  ## temporary to debug issues... remove soon.
         for f, v in read_particles.items():
-            if f not in finfos:
-                # coordinates and smoothing length are added when doing selections that are not all_data     
-                finfos[f] = self.ds._get_field_info(f[0], f[1])
-            da_f = dask_array.unyt_from_dask(v, units=finfos[f].units, registry=self.ds.unit_registry)
-            self.field_data[f] = da_f.to(finfos[f].output_units)
+            if return_unyt:
+                from unyt import dask_array
+                if f not in finfos:
+                    # coordinates and smoothing length are added when doing selections that are not all_data     
+                    finfos[f] = self.ds._get_field_info(f[0], f[1])
+                da_f = dask_array.unyt_from_dask(v, units=finfos[f].units, registry=self.ds.unit_registry)
+                self.field_data[f] = da_f.to(finfos[f].output_units)
+            else:
+                self.field_data[f] = v
 
         fields_to_generate += gen_fluids + gen_particles
         self._generate_fields(fields_to_generate)

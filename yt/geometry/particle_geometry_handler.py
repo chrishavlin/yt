@@ -401,29 +401,37 @@ class ParticleIndex(Index):
         is_all_data = getattr(dobj.selector, "is_all_data", False)
         if is_all_data is False:
             for field in fields_to_read:
-                if (field[0], "Coordinates") not in fields_to_read:
-                    fields_to_read.append((field[0], "Coordinates"))
+                if (field[0], "coordinates") not in fields_to_read:
+                    fields_to_read.append((field[0], "coordinates"))
                 if (field[0], "smoothing_length") not in fields_to_read:
                     fields_to_read.append((field[0], "smoothing_length"))
 
         # read all the data from the intersecting data_files into delayed dask arrays
         fields_to_return = self.io._read_from_datafiles(data_file_subset, fields_to_read)
         
-        # find the particles within the selector 
+        # find the particles within the selector         
         if is_all_data is False:
-            fields_to_return = self.apply_selector_mask(fields_to_return, dobj)
+            fields_to_return = self.apply_selector_mask(fields_to_return, dobj.selector)
 
         return fields_to_return, fields_to_generate 
         
-    def apply_selector_mask(self, fields_to_return, dobj):
+    def apply_selector_mask(self, fields_to_return, selector):
         # applies a selector mask to each dask-chunk
+
+        def select_points(pos0, pos1, pos2, smo, selector_obj):
+            # the function we will give to map_blocks. this function wraps the call to select_points because we
+            # need to pass the whole selector object for pickle compatibility when executing in parallel.      
+            the_mask = selector_obj.select_points(pos0, pos1, pos2, smo)
+            if the_mask is None:
+                the_mask = np.full(pos0.shape, False, dtype=bool)            
+            return the_mask
+
         ptype_masks = {} 
-        sel = dobj.selector
         for field, vals in fields_to_return.items():
             if field[0] not in ptype_masks:
-                pos = fields_to_return[(field[0],"Coordinates")]
+                pos = fields_to_return[(field[0],"coordinates")]
                 smo = fields_to_return[(field[0],"smoothing_length")]
-                ptype_masks[field[0]] = pos[:,0].map_blocks(sel.select_points, pos[:,1], pos[:,2], smo, meta=np.array((), dtype=bool))
+                ptype_masks[field[0]] = pos[:,0].map_blocks(select_points, pos[:,1], pos[:,2], smo, selector, meta=np.array((), dtype=bool))
 
             fields_to_return[field] = vals[ptype_masks[field[0]],]
         

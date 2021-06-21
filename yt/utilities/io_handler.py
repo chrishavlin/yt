@@ -177,6 +177,9 @@ class BaseIOHandler:
         else:            
             return self._count_particles(data_file) # missing particle count, need to read it
 
+    def _get_read_params(self):
+        return None
+
     def _read_from_datafiles(self, data_files, fields):
         
         # We first need a set of masks for each particle type
@@ -196,13 +199,16 @@ class BaseIOHandler:
                 ptf[ftype].append(fname)
                 field_maps[field].append(field)
 
-        
+            # should handle Massarr and smoothing_length differently. 
+
         rv_c = defaultdict(list)  # field -> chunked dask array
         rv = defaultdict(list)  # the final output
         fieldsize = defaultdict(lambda: 0)  # field -> the across-chunk size for the mapped field
         for data_file in data_files:
             ra_size = self._get_data_file_ptype_counts(data_file, list(ptf.keys()))
-            delayed_chunk = dask_delayed(self._read_particle_fields)(data_file, ptf)  # this is the actual io call
+
+            delayed_chunk = dask_delayed(self._read_particle_fields_static)(data_file, ptf, self._get_read_params())
+            # delayed_chunk = dask_delayed(self._read_particle_fields)(data_file, ptf)  # this is the actual io call
             
             # delayed_chunk is a dict for a single chunk by field
             # e.g., chunk_data[('PartType4','Density')] to get vals for this chunk
