@@ -401,8 +401,9 @@ class ParticleIndex(Index):
         is_all_data = getattr(dobj.selector, "is_all_data", False)
         if is_all_data is False:
             for field in fields_to_read:
-                if (field[0], "coordinates") not in fields_to_read:
-                    fields_to_read.append((field[0], "coordinates"))
+                # note: need to change Coordinates to particle_position....
+                if (field[0], "Coordinates") not in fields_to_read:
+                    fields_to_read.append((field[0], "Coordinates"))
                 if (field[0], "smoothing_length") not in fields_to_read:
                     fields_to_read.append((field[0], "smoothing_length"))
 
@@ -429,7 +430,7 @@ class ParticleIndex(Index):
         ptype_masks = {} 
         for field, vals in fields_to_return.items():
             if field[0] not in ptype_masks:
-                pos = fields_to_return[(field[0],"coordinates")]
+                pos = fields_to_return[(field[0],"Coordinates")]
                 smo = fields_to_return[(field[0],"smoothing_length")]
                 ptype_masks[field[0]] = pos[:,0].map_blocks(select_points, pos[:,1], pos[:,2], smo, selector, meta=np.array((), dtype=bool))
 
