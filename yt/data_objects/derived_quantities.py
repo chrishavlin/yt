@@ -10,7 +10,7 @@ from yt.utilities.parallel_tools.parallel_analysis_interface import (
 )
 from yt.utilities.physical_constants import gravitational_constant_cgs
 from yt.utilities.physical_ratios import HUGE
-
+from dask import compute as dask_compute, array as dask_array
 
 def get_position_fields(field, data):
     axis_names = [data.ds.coordinates.axis_name[num] for num in [0, 1, 2]]
@@ -28,7 +28,7 @@ def get_position_fields(field, data):
     return position_fields
 
 
-class DerivedQuantity(ParallelAnalysisInterface):
+class DerivedQuantity():
     num_vals = -1
 
     def __init__(self, data_source):
@@ -42,14 +42,29 @@ class DerivedQuantity(ParallelAnalysisInterface):
     def count_values(self, *args, **kwargs):
         return
 
+    def _get_delayed(self, *args, **kwargs):
+        raise NotImplementedError
+
     def __call__(self, *args, **kwargs):
+        rv_delayed = self._get_delayed(*args, **kwargs)
+        rv = dask_compute(*rv_delayed)
+        return self._finalize(rv)
+
+    def _finalize(self, results):
+        if len(results) == 1:
+            results = results[0]
+        return results
+
+    def _call_manual_reduce_(self, *args, **kwargs):
         """Calculate results for the derived quantity"""
         # create the index if it doesn't exist yet
         self.data_source.ds.index
         self.count_values(*args, **kwargs)
+
         chunks = self.data_source.chunks(
             [], chunking_style=self.data_source._derived_quantity_chunking
         )
+
         storage = {}
         for sto, ds in parallel_objects(chunks, -1, storage=storage):
             sto.result = self.process_chunk(ds, *args, **kwargs)
@@ -91,7 +106,21 @@ class DerivedQuantityCollection:
         return derived_quantity_registry.keys()
 
 
-class WeightedAverageQuantity(DerivedQuantity):
+class AverageQuantity(DerivedQuantity):
+
+    def _get_delayed(self, fields, weightfield=None):
+        f = getattr(dask_array, "average")
+        if weightfield is not None:
+            weight = self.data_source[weightfield]
+        return [f(self.data_source[field], weight=weight) for field in fields]
+
+    def __call__(self, fields, weight=None):
+        fields = list(iter_fields(fields))
+        rv = super().__call__(fields, weight)
+        return rv
+
+
+class WeightedAverageQuantity(AverageQuantity):
     r"""
     Calculates the weight average of a field or fields.
 
@@ -121,26 +150,9 @@ class WeightedAverageQuantity(DerivedQuantity):
 
     """
 
-    def count_values(self, fields, weight):
-        # This is a list now
-        self.num_vals = len(fields) + 1
-
     def __call__(self, fields, weight):
-        fields = list(iter_fields(fields))
-        rv = super().__call__(fields, weight)
-        if len(rv) == 1:
-            rv = rv[0]
-        return rv
-
-    def process_chunk(self, data, fields, weight):
-        vals = [(data[field] * data[weight]).sum(dtype=np.float64) for field in fields]
-        wv = data[weight].sum(dtype=np.float64)
-        return vals + [wv]
-
-    def reduce_intermediate(self, values):
-        w = values.pop(-1).sum(dtype=np.float64)
-        return [v.sum(dtype=np.float64) / w for v in values]
-
+        # depreceate this?
+        return super().__call__(fields, weight)
 
 class TotalQuantity(DerivedQuantity):
     r"""
@@ -160,23 +172,13 @@ class TotalQuantity(DerivedQuantity):
 
     """
 
-    def count_values(self, fields):
-        # This is a list now
-        self.num_vals = len(fields)
+    def _get_delayed(self, fields):
+        return [self.data_source[field].sum() for field in fields]
 
     def __call__(self, fields):
         fields = list(iter_fields(fields))
         rv = super().__call__(fields)
-        if len(rv) == 1:
-            rv = rv[0]
         return rv
-
-    def process_chunk(self, data, fields):
-        vals = [data[field].sum(dtype=np.float64) for field in fields]
-        return vals
-
-    def reduce_intermediate(self, values):
-        return [v.sum(dtype=np.float64) for v in values]
 
 
 class TotalMass(TotalQuantity):
@@ -584,38 +586,13 @@ class Extrema(DerivedQuantity):
 
     """
 
-    def count_values(self, fields, non_zero):
-        self.num_vals = len(fields) * 2
+    def _finalize(self, results):
+        results = [self.data_source.ds.arr(mm[0], mm[1]) for mm in results]
+        return super()._finalize(results)
 
-    def __call__(self, fields, non_zero=False):
-        fields = list(iter_fields(fields))
-        rv = super().__call__(fields, non_zero)
-        if len(rv) == 1:
-            rv = rv[0]
-        return rv
-
-    def process_chunk(self, data, fields, non_zero):
-        vals = []
-        for field in fields:
-            field = data._determine_fields(field)[0]
-            fd = data[field]
-            if non_zero:
-                fd = fd[fd > 0.0]
-            if fd.size > 0:
-                vals += [fd.min(), fd.max()]
-            else:
-                vals += [
-                    array_like_field(data, HUGE, field),
-                    array_like_field(data, -HUGE, field),
-                ]
-        return vals
-
-    def reduce_intermediate(self, values):
-        # The values get turned into arrays here.
-        return [
-            self.data_source.ds.arr([mis.min(), mas.max()])
-            for mis, mas in zip(values[::2], values[1::2])
-        ]
+    def _get_delayed(self, fields, non_zero):
+        # probably need nanmin/max here... dask_array.nanmax
+        return [(self.data_source[field].min(), self.data_source[field].max()) for field in fields]
 
 
 class SampleAtMaxFieldValues(DerivedQuantity):
