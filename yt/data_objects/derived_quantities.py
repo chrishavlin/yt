@@ -4,10 +4,6 @@ from yt.funcs import camelcase_to_underscore, iter_fields
 from yt.units.yt_array import array_like_field
 from yt.utilities.exceptions import YTParticleTypeNotFound
 from yt.utilities.object_registries import derived_quantity_registry
-from yt.utilities.parallel_tools.parallel_analysis_interface import (
-    ParallelAnalysisInterface,
-    parallel_objects,
-)
 from yt.utilities.physical_constants import gravitational_constant_cgs
 from yt.utilities.physical_ratios import HUGE
 from dask import compute as dask_compute, array as dask_array
@@ -29,18 +25,15 @@ def get_position_fields(field, data):
 
 
 class DerivedQuantity():
-    num_vals = -1
 
     def __init__(self, data_source):
         self.data_source = data_source
 
     def __init_subclass__(cls, *args, **kwargs):
+        # this hook gets run on import for every subclass of DerivedQuantity
         super().__init_subclass__(*args, **kwargs)
         if cls.__name__ != "DerivedQuantity":
             derived_quantity_registry[cls.__name__] = cls
-
-    def count_values(self, *args, **kwargs):
-        return
 
     def _get_delayed(self, *args, **kwargs):
         raise NotImplementedError
@@ -55,36 +48,10 @@ class DerivedQuantity():
             results = results[0]
         return results
 
-    def _call_manual_reduce_(self, *args, **kwargs):
-        """Calculate results for the derived quantity"""
-        # create the index if it doesn't exist yet
-        self.data_source.ds.index
-        self.count_values(*args, **kwargs)
-
-        chunks = self.data_source.chunks(
-            [], chunking_style=self.data_source._derived_quantity_chunking
-        )
-
-        storage = {}
-        for sto, ds in parallel_objects(chunks, -1, storage=storage):
-            sto.result = self.process_chunk(ds, *args, **kwargs)
-        # Now storage will have everything, and will be done via pickling, so
-        # the units will be preserved.  (Credit to Nathan for this
-        # idea/implementation.)
-        values = [[] for i in range(self.num_vals)]
-        for key in sorted(storage):
-            for i in range(self.num_vals):
-                values[i].append(storage[key][i])
-        # These will be YTArrays
-        values = [self.data_source.ds.arr(values[i]) for i in range(self.num_vals)]
-        values = self.reduce_intermediate(values)
-        return values
-
-    def process_chunk(self, data, *args, **kwargs):
-        raise NotImplementedError
-
-    def reduce_intermediate(self, values):
-        raise NotImplementedError
+class FieldApplicator(DerivedQuantity):
+    # allow any dask function to be applied to a field list
+    def _get_delayed(self, fields, func_handle, *args, **kwargs):
+        return [func_handle(self.data_source[field], *args, **kwargs) for field in fields]
 
 
 class DerivedQuantityCollection:
@@ -106,17 +73,13 @@ class DerivedQuantityCollection:
         return derived_quantity_registry.keys()
 
 
-class AverageQuantity(DerivedQuantity):
-
-    def _get_delayed(self, fields, weightfield=None):
-        f = getattr(dask_array, "average")
-        if weightfield is not None:
-            weight = self.data_source[weightfield]
-        return [f(self.data_source[field], weight=weight) for field in fields]
+class AverageQuantity(FieldApplicator):
 
     def __call__(self, fields, weight=None):
         fields = list(iter_fields(fields))
-        rv = super().__call__(fields, weight)
+        if weight is not None:
+            weight = self.data_source[weight]
+        rv = super().__call__(fields, dask_array.average, weights=weight)
         return rv
 
 
@@ -151,10 +114,9 @@ class WeightedAverageQuantity(AverageQuantity):
     """
 
     def __call__(self, fields, weight):
-        # depreceate this?
         return super().__call__(fields, weight)
 
-class TotalQuantity(DerivedQuantity):
+class TotalQuantity(FieldApplicator):
     r"""
     Calculates the sum of the field or fields.
 
@@ -172,12 +134,9 @@ class TotalQuantity(DerivedQuantity):
 
     """
 
-    def _get_delayed(self, fields):
-        return [self.data_source[field].sum() for field in fields]
-
     def __call__(self, fields):
         fields = list(iter_fields(fields))
-        rv = super().__call__(fields)
+        rv = super().__call__(fields, dask_array.sum)
         return rv
 
 
@@ -241,56 +200,50 @@ class CenterOfMass(DerivedQuantity):
 
     """
 
-    def count_values(self, use_gas=True, use_particles=False, particle_type="nbody"):
+    def __call__(self, use_gas=True, use_particles=False, particle_type="nbody"):
+        return super().__call__(use_gas=use_gas, use_particles=use_particles, particle_type=particle_type)
+
+    def _get_delayed(self, use_gas=True, use_particles=False, particle_type="nbody"):
+        # reminder:
+        #   center of mass = sum_i ( m_i * R_ij ) / sum(m_i) for j in x,y,z
+        #   (i.e., center of mass is the mass-weighted average of the position vectors)
+        #
+
+        # check if we are using both gas and particle types
         finfo = self.data_source.ds.field_info
         includes_gas = ("gas", "mass") in finfo
         includes_particles = (particle_type, "particle_mass") in finfo
+        use_gas = use_gas & includes_gas
+        use_particles = use_particles & includes_particles
 
-        self.use_gas = use_gas & includes_gas
-        self.use_particles = use_particles & includes_particles
+        data = self.data_source
+        ave = dask_array.average  # the function we will use
 
-        self.num_vals = 0
-        if self.use_gas:
-            self.num_vals += 4
-        if self.use_particles:
-            self.num_vals += 4
+        if use_gas:
+            wght = data["gas", "mass"]
+            x, m_gas = ave(data["gas", "x"], weights=wght, returned=True)
+            y, z = [ave(data["gas", ax], weights=wght) for ax in "yz"]
+            xyz = [x, y, z]
 
-    def process_chunk(
-        self, data, use_gas=True, use_particles=False, particle_type="nbody"
-    ):
-        vals = []
-        if self.use_gas:
-            vals += [
-                (data["gas", ax] * data["gas", "mass"]).sum(dtype=np.float64)
-                for ax in "xyz"
-            ]
-            vals.append(data["gas", "mass"].sum(dtype=np.float64))
-        if self.use_particles:
-            vals += [
-                (
-                    data[particle_type, f"particle_position_{ax}"]
-                    * data[particle_type, "particle_mass"]
-                ).sum(dtype=np.float64)
-                for ax in "xyz"
-            ]
-            vals.append(data[particle_type, "particle_mass"].sum(dtype=np.float64))
-        return vals
+        if use_particles:
+            wght = data[particle_type, "particle_mass"]
+            ppos = "particle_position"
+            xp, m_p = ave(data[particle_type, f"{ppos}_x"], weights=wght, returned=True)
+            yp, zp = [ave(data[particle_type, f"{ppos}_{ax}"], weights=wght) for ax in "yz"]
 
-    def reduce_intermediate(self, values):
-        if len(values) not in (4, 8):
-            raise RuntimeError
-        x = values.pop(0).sum(dtype=np.float64)
-        y = values.pop(0).sum(dtype=np.float64)
-        z = values.pop(0).sum(dtype=np.float64)
-        w = values.pop(0).sum(dtype=np.float64)
-        if len(values) > 0:
-            # Note that this could be shorter if we pre-initialized our x,y,z,w
-            # values as YTQuantity objects.
-            x += values.pop(0).sum(dtype=np.float64)
-            y += values.pop(0).sum(dtype=np.float64)
-            z += values.pop(0).sum(dtype=np.float64)
-            w += values.pop(0).sum(dtype=np.float64)
-        return self.data_source.ds.arr([v / w for v in [x, y, z]])
+            if use_gas:
+                # combine the two systems' centers of mass
+                m_tot = m_gas + m_p
+                f_gas = m_gas / m_tot
+                f_p = m_p / m_tot
+                xyz = [x * f_gas + xp * f_p, y * f_gas + yp * f_p, z * f_gas + zp * f_p]
+            else:
+                xyz = [xp, yp, zp]
+
+        return xyz
+
+    def _finalize(self, results):
+        return results
 
 
 class BulkVelocity(DerivedQuantity):
@@ -587,12 +540,23 @@ class Extrema(DerivedQuantity):
     """
 
     def _finalize(self, results):
-        results = [self.data_source.ds.arr(mm[0], mm[1]) for mm in results]
+        results = [self.data_source.ds.arr([mm[0], mm[1]]) for mm in results]
         return super()._finalize(results)
 
     def _get_delayed(self, fields, non_zero):
-        # probably need nanmin/max here... dask_array.nanmax
-        return [(self.data_source[field].min(), self.data_source[field].max()) for field in fields]
+        if non_zero:
+            dl = []
+            for field in fields:
+                data = self.data_source[field]
+                msk = data != 0.
+                dl.append((data[msk].min(), data[msk].max()))
+        else:
+            dl = [(self.data_source[field].min(), self.data_source[field].max()) for field in fields]
+        return dl
+
+    def __call__(self, fields, non_zero=False):
+        return super().__call__(fields, non_zero)
+
 
 
 class SampleAtMaxFieldValues(DerivedQuantity):
