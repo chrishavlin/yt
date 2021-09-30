@@ -34,7 +34,7 @@ class ParticleContainer(YTSelectionContainer):
         self.field_parameters = {}
         self.data_files = list(always_iterable(data_files))
         self.overlap_files = list(always_iterable(overlap_files))
-        self.ds = self.data_files[0].ds
+        # self.ds = self.data_files[0].ds
         self._last_mask = None
         self._last_selector_id = None
         self._current_particle_type = "all"

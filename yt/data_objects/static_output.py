@@ -1886,21 +1886,35 @@ class ParticleFile(abc.ABC):
     start: int = None
     end: int = None
     total_particles: ParticleTypeSizes = None
+    _io_attrs: tuple = None
+    _ds_attrs: tuple = None
 
     def __init__(self, ds, io, filename, file_id, range=None):
-        self.ds = ds
-        self.io = weakref.proxy(io)
+
+        # copy over some attributes to avoid storing full nested io and ds
+        # objects. will copy _io_attrs, _ds_attrs from ds or io objects.
+        self._copy_ds_or_io_attrs(ds, self._ds_attrs)
+        self._copy_ds_or_io_attrs(io, self._io_attrs)
+
+        # self.ds = ds
+        # self.io = weakref.proxy(io)
         self.filename = filename
         self.file_id = file_id
         if range is None:
             range = (None, None)
         self.start, self.end = range
-        self.total_particles = self.io._count_particles(self)
+        self.total_particles = io._count_particles(self)
+
         # Now we adjust our start/end, in case there are fewer particles than
         # we realized
         if self.start is None:
             self.start = 0
         self.end = max(self.total_particles.values()) + self.start
+
+    def _copy_ds_or_io_attrs(self, ds_io, attr_list):
+        if attr_list is not None:
+            for attr in attr_list:
+                setattr(self, attr, getattr(ds_io, attr))
 
     def select(self, selector):
         pass

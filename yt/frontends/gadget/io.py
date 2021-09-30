@@ -9,7 +9,7 @@ from yt.utilities.lib.particle_kdtree_tools import generate_smoothing_length
 from yt.utilities.logger import ytLogger as mylog
 from yt.utilities.on_demand_imports import _h5py as h5py
 
-from .definitions import SNAP_FORMAT_2_OFFSET, gadget_hdf5_ptypes
+from .definitions import gadget_hdf5_ptypes
 
 
 class IOHandlerGadgetHDF5(IOHandlerSPH):
@@ -228,14 +228,8 @@ class IOHandlerGadgetHDF5(IOHandlerSPH):
         return data_return
 
     def _count_particles(self, data_file):
-        si, ei = data_file.start, data_file.end
-        f = h5py.File(data_file.filename, mode="r")
-        pcount = f["/Header"].attrs["NumPart_ThisFile"][:].astype("int")
-        f.close()
-        if None not in (si, ei):
-            np.clip(pcount - si, 0, ei - si, out=pcount)
-        npart = {f"PartType{i}": v for i, v in enumerate(pcount)}
-        return npart
+        # temporary?
+        return data_file._count_particles()
 
     def _identify_fields(self, data_file):
         f = h5py.File(data_file.filename, mode="r")
@@ -440,7 +434,7 @@ class IOHandlerGadgetBinary(IOHandlerSPH):
         return arr
 
     def _yield_coordinates(self, data_file, needed_ptype=None):
-        self._float_type = data_file.ds._header.float_type
+        self._float_type = data_file._header.float_type
         self._field_size = np.dtype(self._float_type).itemsize
         with open(data_file.filename, "rb") as f:
             # We add on an additionally 4 for the first record.
@@ -474,81 +468,10 @@ class IOHandlerGadgetBinary(IOHandlerSPH):
         return pp
 
     def _count_particles(self, data_file):
-        si, ei = data_file.start, data_file.end
-        pcount = np.array(data_file.header["Npart"])
-        if None not in (si, ei):
-            np.clip(pcount - si, 0, ei - si, out=pcount)
-        npart = {self._ptypes[i]: v for i, v in enumerate(pcount)}
-        return npart
+        return data_file._count_particles()
 
     # header is 256, but we have 4 at beginning and end for ints
     _field_size = 4
-
-    def _calculate_field_offsets(
-        self, field_list, pcount, offset, df_start, file_size=None
-    ):
-        # field_list is (ftype, fname) but the blocks are ordered
-        # (fname, ftype) in the file.
-        if self._format == 2:
-            # Need to subtract offset due to extra header block
-            pos = offset - SNAP_FORMAT_2_OFFSET
-        else:
-            pos = offset
-        fs = self._field_size
-        offsets = {}
-        pcount = dict(zip(self._ptypes, pcount))
-
-        for field in self._fields:
-            if field == "ParticleIDs" and self.ds.long_ids:
-                fs = 8
-            else:
-                fs = 4
-            if not isinstance(field, str):
-                field = field[0]
-            if not any((ptype, field) in field_list for ptype in self._ptypes):
-                continue
-            if self._format == 2:
-                pos += 20  # skip block header
-            elif self._format == 1:
-                pos += 4
-            else:
-                raise RuntimeError(f"incorrect Gadget format {str(self._format)}!")
-            any_ptypes = False
-            for ptype in self._ptypes:
-                if field == "Mass" and ptype not in self.var_mass:
-                    continue
-                if (ptype, field) not in field_list:
-                    continue
-                start_offset = df_start * fs
-                if field in self._vector_fields:
-                    start_offset *= self._vector_fields[field]
-                pos += start_offset
-                offsets[(ptype, field)] = pos
-                any_ptypes = True
-                remain_offset = (pcount[ptype] - df_start) * fs
-                if field in self._vector_fields:
-                    remain_offset *= self._vector_fields[field]
-                pos += remain_offset
-            pos += 4
-            if not any_ptypes:
-                pos -= 8
-        if file_size is not None:
-            if (file_size != pos) & (self._format == 1):  # ignore the rest of format 2
-                diff = file_size - pos
-                possible = []
-                for ptype, psize in sorted(pcount.items()):
-                    if psize == 0:
-                        continue
-                    if float(diff) / psize == int(float(diff) / psize):
-                        possible.append(ptype)
-                mylog.warning(
-                    "Your Gadget-2 file may have extra "
-                    "columns or different precision! "
-                    "(%s diff => %s?)",
-                    diff,
-                    possible,
-                )
-        return offsets
 
     def _identify_fields(self, domain):
         # We can just look at the particle counts.

@@ -169,6 +169,18 @@ class GadgetBinaryHeader:
 
 
 class GadgetBinaryFile(ParticleFile):
+
+    _io_attrs = (
+        "_ptypes",
+        "_field_size",
+        "_format",
+        "var_mass",
+        "_vector_fields",
+        "_fields",
+    )
+    _ds_attrs = ("long_ids", "_header")
+    field_offsets: dict = None
+
     def __init__(self, ds, io, filename, file_id, range=None):
         header = GadgetBinaryHeader(filename, ds._header.spec)
         self.header = header.value
@@ -181,13 +193,88 @@ class GadgetBinaryFile(ParticleFile):
     def _calculate_offsets(self, field_list, pcounts):
         # Note that we ignore pcounts here because it's the global count.  We
         # just want the local count, which we store here.
-        self.field_offsets = self.io._calculate_field_offsets(
-            field_list,
-            self.header["Npart"].copy(),
-            self._position_offset,
-            self.start,
-            self._file_size,
-        )
+        self.field_offsets = self._calculate_field_offsets(field_list)
+
+    def _calculate_field_offsets(self, field_list):
+
+        # calculate the field offsets in this file.
+        pcount = self.header["Npart"].copy()
+        df_start = self.start
+        offset = self._position_offset
+        file_size = self._file_size
+
+        # field_list is (ftype, fname) but the blocks are ordered
+        # (fname, ftype) in the file.
+        if self._format == 2:
+            # Need to subtract offset due to extra header block
+            pos = offset - SNAP_FORMAT_2_OFFSET
+        else:
+            pos = offset
+        fs = self._field_size
+        offsets = {}
+        pcount = dict(zip(self._ptypes, pcount))
+
+        for field in self._fields:
+            if field == "ParticleIDs" and self.long_ids:
+                fs = 8
+            else:
+                fs = 4
+            if not isinstance(field, str):
+                field = field[0]
+            if not any((ptype, field) in field_list for ptype in self._ptypes):
+                continue
+            if self._format == 2:
+                pos += 20  # skip block header
+            elif self._format == 1:
+                pos += 4
+            else:
+                raise RuntimeError(f"incorrect Gadget format {str(self._format)}!")
+            any_ptypes = False
+            for ptype in self._ptypes:
+                if field == "Mass" and ptype not in self.var_mass:
+                    continue
+                if (ptype, field) not in field_list:
+                    continue
+                start_offset = df_start * fs
+                if field in self._vector_fields:
+                    start_offset *= self._vector_fields[field]
+                pos += start_offset
+                offsets[(ptype, field)] = pos
+                any_ptypes = True
+                remain_offset = (pcount[ptype] - df_start) * fs
+                if field in self._vector_fields:
+                    remain_offset *= self._vector_fields[field]
+                pos += remain_offset
+            pos += 4
+            if not any_ptypes:
+                pos -= 8
+        if file_size is not None:
+            if (file_size != pos) & (self._format == 1):  # ignore the rest of format 2
+                diff = file_size - pos
+                possible = []
+                for ptype, psize in sorted(pcount.items()):
+                    if psize == 0:
+                        continue
+                    if float(diff) / psize == int(float(diff) / psize):
+                        possible.append(ptype)
+                mylog.warning(
+                    "Your Gadget-2 file may have extra "
+                    "columns or different precision! "
+                    "(%s diff => %s?)",
+                    diff,
+                    possible,
+                )
+        return offsets
+
+    def _count_particles(self):
+
+        # count the particles by particle type in this file.
+        si, ei = self.start, self.end
+        pcount = np.array(self.header["Npart"])
+        if None not in (si, ei):
+            np.clip(pcount - si, 0, ei - si, out=pcount)
+        npart = {self._ptypes[i]: v for i, v in enumerate(pcount)}
+        return npart
 
 
 class GadgetBinaryIndex(SPHParticleIndex):
@@ -561,6 +648,9 @@ class GadgetDataset(SPHDataset):
 
 
 class GadgetHDF5File(ParticleFile):
+    def __init__(self, ds, io, filename, file_id, range=None):
+        self._element_names = io._element_names
+        super().__init__(ds, io, filename, file_id, range=range)
 
     _fields_with_cols = ("Metallicity_", "PassiveScalars_", "Chemistry_", "GFM_Metals_")
 
@@ -584,6 +674,18 @@ class GadgetHDF5File(ParticleFile):
 
         return v
 
+    def _count_particles(self, handle=None):
+        si, ei = self.start, self.end
+        if not handle:
+            with self.transaction as handle:
+                pcount = handle["/Header"].attrs["NumPart_ThisFile"][:].astype("int")
+        else:
+            pcount = handle["/Header"].attrs["NumPart_ThisFile"][:].astype("int")
+
+        if None not in (si, ei):
+            np.clip(pcount - si, 0, ei - si, out=pcount)
+        return {f"PartType{i}": v for i, v in enumerate(pcount)}
+
     def _sanitize_field_col(self, field_name: str):
 
         if any(field_name.startswith(c) for c in self._fields_with_cols):
@@ -596,7 +698,7 @@ class GadgetHDF5File(ParticleFile):
 
             return rfield, col
 
-        if field_name in self.io._element_names:
+        if field_name in self._element_names:
             return "ElementAbundance/" + field_name, None
 
         return field_name, None

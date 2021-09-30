@@ -292,6 +292,12 @@ class BaseParticleIOHandler(BaseIOHandler):
                 psize[ptype] += selector.count_points(x, y, z, hsml)
         return dict(psize)
 
+    def _count_particles(self, data_file):
+        # a method for counting the particles of a single data file.
+        # not an abc (yet?), need to raise error if the frontend does not implement this.
+        # maybe this should be a method in data_file object?
+        raise NotImplementedError
+
 
 class IOHandlerExtracted(BaseIOHandler):
 
