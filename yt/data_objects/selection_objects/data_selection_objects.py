@@ -27,6 +27,7 @@ from yt.utilities.exceptions import (
 )
 from yt.utilities.lib.marching_cubes import march_cubes_grid, march_cubes_grid_flux
 from yt.utilities.logger import ytLogger as mylog
+from yt.utilities.parallel_tools.dask_helper import compute as dask_compute, is_delayed
 from yt.utilities.parallel_tools.parallel_analysis_interface import (
     ParallelAnalysisInterface,
 )
@@ -205,6 +206,8 @@ class YTSelectionContainer(YTDataContainer, ParallelAnalysisInterface, abc.ABC):
         )
 
         for f, v in read_particles.items():
+            if is_delayed(v):
+                v = dask_compute(v)[0]
             self.field_data[f] = self.ds.arr(v, units=finfos[f].units)
             self.field_data[f].convert_to_units(finfos[f].output_units)
 

@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from functools import _make_key, lru_cache
 from typing import DefaultDict, List, Tuple
 
+from dask import array as dask_array, delayed as dask_delayed
+
 if sys.version_info >= (3, 9):
     from collections.abc import Iterator, Mapping
 else:
@@ -337,6 +339,97 @@ class BaseParticleIOHandler(BaseIOHandler):
             # we must apply the selector and count the result
             psize = self._count_selected_particles(psize, chunks, ptf, selector)
         return psize
+
+    def _get_array_shape(self, field, ra_size):
+        # returns the expected array shape, accounting for vector and array fields
+        if field in self._vector_fields:
+            shape = (ra_size, self._vector_fields[field])
+        elif field in self._array_fields:
+            shape = (ra_size,) + self._array_fields[field]
+        else:
+            shape = (ra_size,)
+        return shape
+
+    def _read_particle_fields(self, data_file, ptf):
+        # front-end specific abstract method that must be implemented by each front end. Given a data_file object, need to
+        # return a dict containing the data for each field in ptf.
+        raise NotImplementedError(
+            "This frontend is missing its io._read_particle_fields method"
+        )
+
+    def _count_particles(self, data_file):
+        # front-end specific abstract method that must be implemented by each front end. Given a data_file object, need to
+        # return a dict containing the particle count by particle type. Only needs to count total particles.
+        raise NotImplementedError(
+            "This frontend is missing its io._count_particles method"
+        )
+
+    def _get_data_file_ptype_counts(self, data_file, particle_types):
+        if all([ptype in data_file.total_particles for ptype in particle_types]):
+            return (
+                data_file.total_particles
+            )  # we have particle counts, just return that
+        else:
+            return self._count_particles(
+                data_file
+            )  # missing particle count, need to read it
+
+    def _read_from_datafiles(self, data_files, fields):
+        # TODO: replace standard _read_particle_selection with this one.
+        # We first need a set of masks for each particle type
+        ptf = defaultdict(list)  # ptype -> on-disk fields to read
+        field_maps = defaultdict(list)  # ptype -> fields (including unions)
+        unions = self.ds.particle_unions
+        # What we need is a mapping from particle types to return types
+        for field in fields:
+            ftype, fname = field
+            if ftype in unions:
+                for pt in unions[ftype]:
+                    ptf[pt].append(fname)
+                    field_maps[pt, fname].append(field)
+            else:
+                ptf[ftype].append(fname)
+                field_maps[field].append(field)
+
+        # should handle Massarr and smoothing_length differently.
+        rv_c = defaultdict(list)  # field -> chunked dask array
+        rv = defaultdict(list)  # the final output
+        fieldsize = defaultdict(
+            lambda: 0
+        )  # field -> the across-chunk size for the mapped field
+        for data_file in data_files:
+            ra_size = self._get_data_file_ptype_counts(data_file, list(ptf.keys()))
+            delayed_chunk = dask_delayed(self._read_particle_fields)(data_file, ptf)
+
+            # delayed_chunk is a dict for a single chunk by field
+            # e.g., chunk_data[('PartType4','Density')] to get vals for this chunk
+            # but remember that they are delayed objs at this point (hence using
+            # a delayed chunk_data.get below)
+            for ptype, fieldlist in ptf.items():
+                if ra_size[ptype]:
+                    for field in fieldlist:
+                        pfld = (ptype, field)
+                        shape = self._get_array_shape(field, ra_size[ptype])
+                        vals = dask_delayed(delayed_chunk.get)(pfld)
+                        delayed_field = dask_array.from_delayed(
+                            vals, shape, dtype="float64"
+                        )  # the dtype here might be an issue...
+                        # append values to the proper mapped field list
+                        for mapped_field in field_maps[pfld]:
+                            rv_c[mapped_field].append(delayed_field)
+                            fieldsize[mapped_field] += ra_size[ptype]
+
+        # com  bine the delayed chunk-arrays into single delayed dask arrays by field
+        for field in fields:
+            if fieldsize[field]:
+                if len(rv_c[field]) > 1:
+                    # multiple chunks have fields, create single dask array
+                    rv[field] = dask_array.concatenate(rv_c[field], axis=0)
+                else:
+                    # only one chunk has a field
+                    rv[field] = rv_c[field][0]
+
+        return rv
 
 
 class IOHandlerExtracted(BaseIOHandler):
