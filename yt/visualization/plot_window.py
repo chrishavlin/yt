@@ -33,7 +33,7 @@ from .fixed_resolution import (
     FixedResolutionBuffer,
     OffAxisProjectionFixedResolutionBuffer,
 )
-from .geo_plot_utils import get_mpl_transform
+from .geo_plot_utils import get_mpl_transform, validate_default_projection_args
 from .plot_container import (
     ImagePlotContainer,
     invalidate_data,
@@ -234,6 +234,7 @@ class PlotWindow(ImagePlotContainer, abc.ABC):
             axname = self.ds.coordinates.axis_name[ax]
             transform = self.ds.coordinates.data_transform[axname]
             projection = self.ds.coordinates.data_projection[axname]
+            projection = validate_default_projection_args(projection, center)
             self._projection = get_mpl_transform(projection)
             self._transform = get_mpl_transform(transform)
 

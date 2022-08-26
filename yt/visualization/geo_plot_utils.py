@@ -1,3 +1,4 @@
+import sys
 from types import FunctionType
 from typing import Any, Dict, Optional, Tuple
 
@@ -115,3 +116,33 @@ def get_mpl_transform(mpl_proj) -> Optional[FunctionType]:
     if key is None:
         instantiated_func = None
     return instantiated_func
+
+
+def validate_default_projection_args(projection, plot_display_center):
+    # this function checks if a cartopy projection can use central_longitude
+    # or central_latitude arguments.
+
+    if "cartopy" not in sys.modules:
+        return projection
+
+    if projection in transform_list:
+        import inspect
+
+        from yt.utilities.on_demand_imports import _cartopy as cartopy
+
+        if hasattr(cartopy.crs, projection):
+            crs = getattr(cartopy.crs, projection)
+            crs_argspec = inspect.getfullargspec(crs)
+
+            extra_kwargs = {}
+            # assuming here that for geo-projections, plot_display_center is always
+            # (longitude, latitude). Will only end up here when plotting in map
+            # view, so that should always be true.
+            for axid, kw in enumerate(("central_longitude", "central_latitude")):
+                if kw in crs_argspec.args:
+                    extra_kwargs[kw] = plot_display_center[axid].d
+
+            if len(extra_kwargs):
+                projection = (projection, (), extra_kwargs)
+
+    return projection

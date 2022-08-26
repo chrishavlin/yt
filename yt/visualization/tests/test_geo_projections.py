@@ -1,12 +1,17 @@
 import unittest
 
 import numpy as np
+from matplotlib.transforms import Affine2D
 from nose.plugins.attrib import attr
 
 import yt
 from yt.testing import ANSWER_TEST_TAG, fake_amr_ds, requires_module
 from yt.utilities.answer_testing.framework import GenericImageTest
-from yt.visualization.geo_plot_utils import get_mpl_transform, transform_list
+from yt.visualization.geo_plot_utils import (
+    get_mpl_transform,
+    transform_list,
+    validate_default_projection_args,
+)
 
 
 def setup():
@@ -193,3 +198,40 @@ class TestNonGeoProjections(unittest.TestCase):
         assert self.ds.coordinates.data_transform[axis] is None
         assert self.slc._projection is None
         assert self.slc._transform is None
+
+
+@requires_module("cartopy")
+def test_default_projection_args():
+
+    # check that all projections run
+    for prj_name in transform_list:
+        _ = validate_default_projection_args(prj_name, (0.0, 0.0))
+
+    # check that a variety of non-cartopy projections are unaffected
+    for possible_prj in ("not_a_crs", None, "Affine2D", Affine2D):
+        expected = validate_default_projection_args(
+            possible_prj,
+            (
+                0.0,
+                0.0,
+            ),
+        )
+        assert expected == possible_prj
+
+    # check some specific projections
+    plot_center = [40.10811516705866, -88.22956237357006]
+    for prj in ("Robinson", "PlateCarree", "LambertCylindrical", "Mollweide"):
+        prj_actual = validate_default_projection_args(prj, plot_center)
+        assert len(prj_actual) == 3
+        assert prj_actual[2]["central_longitude"] == plot_center[0]
+        assert "central_latitude" not in prj_actual[2]
+
+    for prj in ("Stereographic", "Orthographic"):
+        prj_actual = validate_default_projection_args(prj, plot_center)
+        assert len(prj_actual) == 3
+        assert prj_actual[2]["central_longitude"] == plot_center[0]
+        assert prj_actual[2]["central_latitude"] == plot_center[1]
+
+    prj = "UTM"  # no central lon/lat args, will passthrough
+    prj_actual = validate_default_projection_args(prj, plot_center)
+    assert prj_actual == prj
