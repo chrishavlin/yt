@@ -55,10 +55,17 @@ elif [[ ${dependencies} == "full" ]]; then
     # include a pyproject.toml file or use any pip-comptatible solution to remedy this.
     python -m pip install numpy>=1.19.4 cython~=0.29.21
 
-    # this is required for cartopy. It should normally be specified in our setup.cfg as
-    # cartopy[plotting]
-    # However it doesn't work on Ubuntu 18.04 (used in CI at the time of writing)
-    python -m pip install shapely --no-binary=shapely
+    case ${RUNNER_OS} in
+    linux|Linux|osc|macOS)
+        # this is required for cartopy. It should normally be specified in our setup.cfg as
+        # cartopy[plotting]
+        # However it doesn't work on Ubuntu 18.04 (used in CI at the time of writing)
+        python -m pip install shapely --no-binary=shapely
+        # cartopy is not in setup.cfg, install manually
+        python -m pip install cartopy
+        ;;
+    esac
+
     CFLAGS="$CFLAGS -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H" python -m pip install -e .[test,full]
 else
    # test with no special requirements
