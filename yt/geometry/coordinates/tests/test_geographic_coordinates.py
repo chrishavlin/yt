@@ -1,7 +1,9 @@
 # Some tests for the geographic coordinates handler
 
 import numpy as np
+import pytest
 
+from yt.loaders import load_uniform_grid
 from yt.testing import assert_equal, assert_rel_equal, fake_amr_ds
 
 # Our canonical tests are that we can access all of our fields and we can
@@ -105,3 +107,25 @@ def test_internal_geographic_coordinates():
     )
     # We also want to check that our radius is correct
     assert_equal(dd["index", "r"], -1.0 * dd["index", "depth"] + ds.outer_radius)
+
+
+@pytest.mark.parametrize("geometry", ("geographic", "internal_geographic"))
+def test_arbitrary_radial_axis(geometry):
+    Nx = 8
+    Ny = 7
+    Nz = 6
+    data = {"density": np.random.random((Ny, Nx, Nz))}
+
+    ds = load_uniform_grid(
+        data,
+        [Ny, Nx, Nz],
+        bbox=np.array([[-90, 90], [-180, 180], [0.0, 1.0]]),
+        geometry=(geometry, ("latitude", "longitude", "z")),
+        parameters={"radial_axis": "z"},  # will rename to z_
+    )
+
+    fld = ("stream", "density")
+    assert ds.slice("z_", 0.5)[fld].size == Nx * Ny
+    assert ds.slice("latitude", 0.0)[fld].size == Nz * Nx
+    assert ds.slice("longitude", 0.0)[fld].size == Nz * Ny
+    assert ds.proj(fld, "z_")[fld].size == Nx * Ny

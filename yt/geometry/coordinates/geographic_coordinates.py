@@ -1,6 +1,7 @@
 import numpy as np
 
 from yt.utilities.lib.pixelization_routines import pixelize_cartesian, pixelize_cylinder
+from yt.utilities.logger import ytLogger as mylog
 
 from .coordinate_handler import (
     CoordinateHandler,
@@ -10,10 +11,14 @@ from .coordinate_handler import (
 
 
 class GeographicCoordinateHandler(CoordinateHandler):
-    radial_axis = "altitude"
+
     name = "geographic"
+    default_radial_axis = "altitude"
 
     def __init__(self, ds, ordering=None):
+        radial_axis = ds.parameters.get("radial_axis", self.default_radial_axis)
+        radial_axis, ordering = self._validate_radial_axis(radial_axis, ordering)
+        self.radial_axis = radial_axis
         if not ordering:
             ordering = ("latitude", "longitude", self.radial_axis)
         super().__init__(ds, ordering)
@@ -21,6 +26,17 @@ class GeographicCoordinateHandler(CoordinateHandler):
         self.image_units[self.axis_id["latitude"]] = (None, None)
         self.image_units[self.axis_id["longitude"]] = (None, None)
         self.image_units[self.axis_id[self.radial_axis]] = ("deg", "deg")
+
+    def _validate_radial_axis(self, radial_axis, ordering=None):
+        # do not allow some protected names
+        if radial_axis in ("x", "y", "z", "latitude", "longitude", "r", "theta", "phi"):
+            new_axis = radial_axis + "_"
+            mylog.warning(
+                "%s is a protected axis name, re-naming to %s.", radial_axis, new_axis
+            )
+            ordering = [c if c != radial_axis else new_axis for c in ordering]
+            return new_axis, ordering
+        return radial_axis, ordering
 
     def setup_fields(self, registry):
         # Missing implementation for x, y and z coordinates.
@@ -186,7 +202,7 @@ class GeographicCoordinateHandler(CoordinateHandler):
                     surface_height = data.ds.surface_height
                 else:
                     surface_height = data.ds.quan(0.0, "code_length")
-            return data[("index", "altitude")] + surface_height
+            return data[("index", self.radial_axis)] + surface_height
 
         registry.add_field(
             ("index", "r"),
@@ -194,7 +210,7 @@ class GeographicCoordinateHandler(CoordinateHandler):
             function=_altitude_to_radius,
             units="code_length",
         )
-        registry.alias(("index", "dr"), ("index", "daltitude"))
+        registry.alias(("index", "dr"), ("index", f"d{self.radial_axis}"))
 
     def _retrieve_radial_offset(self, data_source=None):
         # This returns the factor by which the radial field is multiplied and
@@ -351,17 +367,24 @@ class GeographicCoordinateHandler(CoordinateHandler):
         self._image_axis_name = rv
         return rv
 
-    _x_pairs = (
-        ("latitude", "longitude"),
-        ("longitude", "latitude"),
-        ("altitude", "longitude"),
-    )
+    @property
+    def _x_pairs(self):
 
-    _y_pairs = (
-        ("latitude", "altitude"),
-        ("longitude", "altitude"),
-        ("altitude", "latitude"),
-    )
+        _x_pairs = (
+            ("latitude", "longitude"),
+            ("longitude", "latitude"),
+            (self.radial_axis, "longitude"),
+        )
+        return _x_pairs
+
+    @property
+    def _y_pairs(self):
+        _y_pairs = (
+            ("latitude", self.radial_axis),
+            ("longitude", self.radial_axis),
+            (self.radial_axis, "latitude"),
+        )
+        return _y_pairs
 
     _data_projection = None
 
@@ -443,7 +466,7 @@ class GeographicCoordinateHandler(CoordinateHandler):
 
 
 class InternalGeographicCoordinateHandler(GeographicCoordinateHandler):
-    radial_axis = "depth"
+    default_radial_axis = "depth"
     name = "internal_geographic"
 
     def _setup_radial_fields(self, registry):
@@ -459,7 +482,7 @@ class InternalGeographicCoordinateHandler(GeographicCoordinateHandler):
                     # so we can look at the domain right edge in depth.
                     rax = self.axis_id[self.radial_axis]
                     outer_radius = data.ds.domain_right_edge[rax]
-            return -1.0 * data[("index", "depth")] + outer_radius
+            return -1.0 * data[("index", self.radial_axis)] + outer_radius
 
         registry.add_field(
             ("index", "r"),
@@ -467,7 +490,7 @@ class InternalGeographicCoordinateHandler(GeographicCoordinateHandler):
             function=_depth_to_radius,
             units="code_length",
         )
-        registry.alias(("index", "dr"), ("index", "ddepth"))
+        registry.alias(("index", "dr"), ("index", f"d{self.radial_axis}"))
 
     def _retrieve_radial_offset(self, data_source=None):
         # Depth means switching sign and adding to full radius
@@ -483,14 +506,6 @@ class InternalGeographicCoordinateHandler(GeographicCoordinateHandler):
                 rax = self.axis_id[self.radial_axis]
                 outer_radius = self.ds.domain_right_edge[rax]
         return outer_radius, -1.0
-
-    _x_pairs = (
-        ("latitude", "longitude"),
-        ("longitude", "latitude"),
-        ("depth", "longitude"),
-    )
-
-    _y_pairs = (("latitude", "depth"), ("longitude", "depth"), ("depth", "latitude"))
 
     def sanitize_center(self, center, axis):
         center, display_center = super(
