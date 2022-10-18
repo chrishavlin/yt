@@ -1,5 +1,6 @@
 import abc
 import weakref
+from collections import defaultdict
 from numbers import Number
 from typing import Tuple
 
@@ -136,6 +137,8 @@ class CoordinateHandler(abc.ABC):
     def __init__(self, ds, ordering):
         self.ds = weakref.proxy(ds)
         self.axis_order = ordering
+        self._coordinate_aliases = {}
+        self._axis_order_with_alias = ordering
 
     @abc.abstractmethod
     def setup_fields(self):
@@ -205,6 +208,36 @@ class CoordinateHandler(abc.ABC):
         self._data_transform = dtx
         return dtx
 
+    def add_coordinate_alias(self, new_name, axis, overwrite=False):
+
+        protected_names = ("x", "y", "z", "r", "theta", "phi", "latitude", "longitude")
+        if new_name in protected_names:
+            raise ValueError("Coordinate alias cannot be set to a protected axis name.")
+
+        if axis not in self.axis_order:
+            raise ValueError(f"{axis} is not an existing axis: {self.axis_order}")
+
+        if axis in self._coordinate_aliases and overwrite is False:
+            raise ValueError(
+                f"axis {axis} already has an alias, use overwrite=True "
+                "to over write."
+            )
+        self._coordinate_aliases[axis] = new_name
+
+        # invalidate some of the properties
+        self._axis_name = None
+        self._image_axis_name = None
+        self._axis_id = None
+
+        # and set one
+        new_order = []
+        for ax in self.axis_order:
+            if ax in self._coordinate_aliases:
+                new_order.append(self._coordinate_aliases[ax])
+            else:
+                new_order.append(ax)
+        self._axis_order_with_alias = tuple(new_order)
+
     _axis_name = None
 
     @property
@@ -216,6 +249,9 @@ class CoordinateHandler(abc.ABC):
             an[axi] = ax
             an[ax] = ax
             an[ax.capitalize()] = ax
+            if ax in self._coordinate_aliases:
+                # only alias the string keys
+                an[self._coordinate_aliases[ax]] = an[ax]
         self._axis_name = an
         return an
 
@@ -228,6 +264,9 @@ class CoordinateHandler(abc.ABC):
         ai = {}
         for axi, ax in enumerate(self.axis_order):
             ai[ax] = ai[axi] = axi
+            if ax in self._coordinate_aliases:
+                # only alias the string keys
+                ai[self._coordinate_aliases[ax]] = ai[ax]
         self._axis_id = ai
         return ai
 
@@ -240,9 +279,17 @@ class CoordinateHandler(abc.ABC):
             return self._image_axis_name
         self._image_axis_name = rv = {}
         for i in range(3):
-            rv[i] = (self.axis_name[self.x_axis[i]], self.axis_name[self.y_axis[i]])
+            x_ax = self.axis_name[self.x_axis[i]]
+            y_ax = self.axis_name[self.y_axis[i]]
+            if y_ax in self._coordinate_aliases:
+                y_ax = self._coordinate_aliases[y_ax]
+            if x_ax in self._coordinate_aliases:
+                x_ax = self._coordinate_aliases[x_ax]
+
+            rv[i] = (x_ax, y_ax)
             rv[self.axis_name[i]] = rv[i]
             rv[self.axis_name[i].capitalize()] = rv[i]
+
         return rv
 
     _x_axis = None

@@ -1394,11 +1394,12 @@ class NormalPlot(abc.ABC):
 
     @staticmethod
     def sanitize_normal_vector(ds, normal) -> Union[str, np.ndarray]:
-        """Return the name of a cartesian axis whener possible,
+        """Return the name of a cartesian axis whenever possible,
         or a 3-element 1D ndarray of float64 in any other valid case.
         Fail with a descriptive error message otherwise.
         """
-        axis_names = ds.coordinates.axis_order
+        coords = ds.coordinates
+        axis_names = tuple(set(coords._axis_order_with_alias + coords.axis_order))
 
         if isinstance(normal, str):
             if normal not in axis_names:
@@ -1413,7 +1414,7 @@ class NormalPlot(abc.ABC):
                 raise ValueError(
                     f"{normal} is not a valid axis identifier. Expected either 0, 1, or 2."
                 )
-            return axis_names[normal]
+            return coords._axis_order_with_alias[normal]
 
         if not is_sequence(normal):
             raise TypeError(
@@ -1438,7 +1439,7 @@ class NormalPlot(abc.ABC):
         if len(nonzero_idx) == 0:
             raise ValueError(f"A null vector {normal} isn't a valid normal vector.")
         if len(nonzero_idx) == 1:
-            return axis_names[nonzero_idx[0]]
+            return coords._axis_order_with_alias[nonzero_idx[0]]
 
         return retv
 
