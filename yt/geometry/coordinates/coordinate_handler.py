@@ -1,6 +1,5 @@
 import abc
 import weakref
-from collections import defaultdict
 from numbers import Number
 from typing import Tuple
 
@@ -228,6 +227,8 @@ class CoordinateHandler(abc.ABC):
         self._axis_name = None
         self._image_axis_name = None
         self._axis_id = None
+        self._x_axis = None
+        self._y_axis = None
 
         # and set one
         new_order = []
@@ -302,6 +303,8 @@ class CoordinateHandler(abc.ABC):
         xa = {}
         for a1, a2 in self._x_pairs:
             xa[a1] = xa[ai[a1]] = ai[a2]
+        for ax, alias in self._coordinate_aliases.items():
+            xa[alias] = xa[ax]
         self._x_axis = xa
         return xa
 
@@ -315,6 +318,8 @@ class CoordinateHandler(abc.ABC):
         ya = {}
         for a1, a2 in self._y_pairs:
             ya[a1] = ya[ai[a1]] = ai[a2]
+        for ax, alias in self._coordinate_aliases.items():
+            ya[alias] = ya[ax]
         self._y_axis = ya
         return ya
 
