@@ -6,7 +6,7 @@ from .boolean_operations import (
 from .cut_region import YTCutRegion
 from .disk import YTDisk
 from .object_collection import YTDataCollection
-from .point import YTPoint
+from .point import YTPoint, YTPoints
 from .ray import YTOrthoRay, YTRay
 from .region import YTRegion
 from .slices import YTCuttingPlane, YTSlice

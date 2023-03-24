@@ -150,6 +150,7 @@ def points_in_cells(
 
 include "_selection_routines/selector_object.pxi"
 include "_selection_routines/point_selector.pxi"
+include "_selection_routines/points_selector.pxi"
 include "_selection_routines/sphere_selector.pxi"
 include "_selection_routines/region_selector.pxi"
 include "_selection_routines/cut_region_selector.pxi"

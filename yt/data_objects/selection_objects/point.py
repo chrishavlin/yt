@@ -14,7 +14,7 @@ class YTPoint(YTSelectionContainer0D):
     Parameters
     ----------
     p: array_like
-        A points defined within the domain.  If the domain is
+        A point defined within the domain.  If the domain is
         periodic its position will be corrected to lie inside
         the range [DLE,DRE) to ensure one and only one cell may
         match that point
@@ -50,3 +50,8 @@ class YTPoint(YTSelectionContainer0D):
             self.p = self.ds.arr(p)
         else:
             self.p = self.ds.arr(p, "code_length")
+
+
+class YTPoints(YTPoint):
+    _type_name = "points"
+    _con_args = ("p",)
