@@ -10,9 +10,8 @@ cdef class PointsSelector(SelectorObject):
 
         # loop over the points
         self.n_pts = dobj.p.shape[0]
-
         n_dims = dobj.p.shape[1]
-
+        self.p = np.empty(dobj.p.shape, dtype=np.float64)
         for i_pt in range(self.n_pts):
             for i_dim in range(3):
                 self.p[i_pt, i_dim] = _ensure_code(dobj.p[i_pt, i_dim])
