@@ -40,7 +40,7 @@ class YTPoint(YTSelectionContainer0D):
     _con_args = ("p",)
 
     def __init__(self, p, ds=None, field_parameters=None, data_source=None):
-        validate_3d_array(p)
+        self._validate_input_array(p)
         validate_object(ds, Dataset)
         validate_object(field_parameters, dict)
         validate_object(data_source, YTSelectionContainer)
@@ -51,7 +51,19 @@ class YTPoint(YTSelectionContainer0D):
         else:
             self.p = self.ds.arr(p, "code_length")
 
+    @staticmethod
+    def _validate_input_array(p):
+        validate_3d_array(p)
+
 
 class YTPoints(YTPoint):
     _type_name = "points"
     _con_args = ("p",)
+
+    @staticmethod
+    def _validate_input_array(p):
+        if p.shape[1] < 3:
+            raise TypeError(
+                "Expected an array of shape (N, 3), received '{}' of "
+                "shape '{}'".format(str(type(p)).split("'")[1], p.shape)
+            )

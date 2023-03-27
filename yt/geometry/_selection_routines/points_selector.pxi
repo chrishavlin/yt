@@ -1,5 +1,16 @@
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+cdef init_points(double[:,:] output_p, np.float64_t[:, :] input_p):
+    cdef int n_pts = input_p.shape[0]
+    cdef int n_dim = input_p.shape[1]
+    for i_pt in range(n_pts):
+           for i_dim in range(n_dim):
+                output_p[i_pt, i_dim] = input_p[i_pt, i_dim]
+
+
 cdef class PointsSelector(SelectorObject):
-    cdef double[:, :] p #np.ndarray[np.float64_t, ndim=2] p
+    cdef double[:, :] p
     cdef int n_pts
 
     def __init__(self, dobj):
@@ -12,17 +23,7 @@ cdef class PointsSelector(SelectorObject):
         self.n_pts = dobj.p.shape[0]
         n_dims = dobj.p.shape[1]
         self.p = np.empty(dobj.p.shape, dtype=np.float64)
-        for i_pt in range(self.n_pts):
-            for i_dim in range(3):
-                self.p[i_pt, i_dim] = _ensure_code(dobj.p[i_pt, i_dim])
-
-                # ensure the point lies in the domain
-                if self.periodicity[i_dim]:
-                    self.p[i_pt, i_dim] = np.fmod(self.p[i_pt, i_dim], self.domain_width[i_dim])
-                    if self.p[i_pt, i_dim] < DLE[i_dim]:
-                        self.p[i_pt, i_dim] += self.domain_width[i_dim]
-                    elif self.p[i_pt, i_dim] >= DRE[i_dim]:
-                        self.p[i_pt, i_dim] -= self.domain_width[i_dim]
+        init_points(self.p, dobj.p)
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
@@ -30,10 +31,17 @@ cdef class PointsSelector(SelectorObject):
     cdef int select_cell(self, np.float64_t pos[3], np.float64_t dds[3]) nogil:
 
         cdef int i_pt
+        cdef np.float64_t p0m = pos[0] - 0.5*dds[0]
+        cdef np.float64_t p0p = pos[0] + 0.5*dds[0]
+        cdef np.float64_t p1m = pos[1] - 0.5*dds[1]
+        cdef np.float64_t p1p = pos[1] + 0.5*dds[1]
+        cdef np.float64_t p2m = pos[2] - 0.5*dds[2]
+        cdef np.float64_t p2p = pos[2] + 0.5*dds[2]
+
         for i_pt in range(self.n_pts):
-            if (pos[0] - 0.5*dds[0] <= self.p[i_pt, 0] < pos[0]+0.5*dds[0] and
-                pos[1] - 0.5*dds[1] <= self.p[i_pt, 1] < pos[1]+0.5*dds[1] and
-                pos[2] - 0.5*dds[2] <= self.p[i_pt, 2] < pos[2]+0.5*dds[2]):
+            if (p0m <= self.p[i_pt, 0] < p0p and
+                p1m <= self.p[i_pt, 1] < p1p and
+                p2m <= self.p[i_pt, 2] < p2p):
                 return 1
 
         return 0
@@ -87,7 +95,8 @@ cdef class PointsSelector(SelectorObject):
         return 0
 
     def _hash_vals(self):
-        # hmm not sure about the hash
+        # this should be changed.
+        # currently it will read from cache if just the first point matches.
         return (("p[0]", self.p[:,0]),
                 ("p[1]", self.p[:,1]),
                 ("p[2]", self.p[:,2]))
