@@ -267,13 +267,14 @@ class IOHandlerYTSpatialPlotHDF5(IOHandlerYTDataContainerHDF5):
     def _read_particle_coords(self, chunks, ptf):
         # This will read chunks and yield the results.
         for data_file in self._sorted_chunk_iterator(chunks):
+            index_mask = slice(data_file.start, data_file.end)
             with h5py.File(data_file.filename, mode="r") as f:
                 for ptype in sorted(ptf):
                     pcount = data_file.total_particles[ptype]
                     if pcount == 0:
                         continue
-                    x = _get_position_array(ptype, f, "px")
-                    y = _get_position_array(ptype, f, "py")
+                    x = _get_position_array(ptype, f, "px", index_mask=index_mask)
+                    y = _get_position_array(ptype, f, "py", index_mask=index_mask)
                     z = (
                         np.zeros(x.size, dtype="float64")
                         + self.ds.domain_left_edge[2].to("code_length").d
@@ -283,13 +284,13 @@ class IOHandlerYTSpatialPlotHDF5(IOHandlerYTDataContainerHDF5):
     def _read_particle_fields(self, chunks, ptf, selector):
         # Now we have all the sizes, and we can allocate
         for data_file in self._sorted_chunk_iterator(chunks):
-            all_count = self._count_particles(data_file)
+            index_mask = slice(data_file.start, data_file.end)
             with h5py.File(data_file.filename, mode="r") as f:
                 for ptype, field_list in sorted(ptf.items()):
-                    x = _get_position_array(ptype, f, "px")
-                    y = _get_position_array(ptype, f, "py")
+                    x = _get_position_array(ptype, f, "px", index_mask=index_mask)
+                    y = _get_position_array(ptype, f, "py", index_mask=index_mask)
                     z = (
-                        np.zeros(all_count[ptype], dtype="float64")
+                        np.zeros(x.size, dtype="float64")
                         + self.ds.domain_left_edge[2].to("code_length").d
                     )
                     mask = selector.select_points(x, y, z, 0.0)
