@@ -354,12 +354,12 @@ cdef class SelectorObject:
         child_mask = gobj.child_mask
         cdef np.ndarray[np.uint8_t, ndim=3] mask
         cdef int dim[3]
-        _ensure_code(gobj.dds)
-        _ensure_code(gobj.LeftEdge)
-        _ensure_code(gobj.RightEdge)
-        cdef np.ndarray[np.float64_t, ndim=1] odds = gobj.dds.d
-        cdef np.ndarray[np.float64_t, ndim=1] oleft_edge = gobj.LeftEdge.d
-        cdef np.ndarray[np.float64_t, ndim=1] oright_edge = gobj.RightEdge.d
+        #_ensure_code(gobj.dds)
+        #_ensure_code(gobj.LeftEdge)
+        #_ensure_code(gobj.RightEdge)
+        cdef np.ndarray[np.float64_t, ndim=1] odds = gobj.dds_d
+        cdef np.ndarray[np.float64_t, ndim=1] oleft_edge = gobj.LeftEdge_d
+        cdef np.ndarray[np.float64_t, ndim=1] oright_edge = gobj.RightEdge_d
         cdef int i
         cdef np.float64_t dds[3]
         cdef np.float64_t left_edge[3]
@@ -377,8 +377,8 @@ cdef class SelectorObject:
         total = self.fill_mask_selector_regular_grid(left_edge, right_edge,
                                                      dds, dim, child_mask,
                                                      mask, level)
-        if total == 0: return None
-        return mask.astype("bool")
+        if total == 0: return None, 0
+        return mask.astype("bool"), total
 
     @cython.boundscheck(False)
     @cython.wraparound(False)

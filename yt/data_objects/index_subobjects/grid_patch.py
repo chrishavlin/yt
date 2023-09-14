@@ -62,14 +62,15 @@ class AMRGridPatch(YTSelectionContainer):
         if self.start_index is not None:
             return self.start_index
         if self.Parent is None:
-            left = self.LeftEdge.d - self.ds.domain_left_edge.d
-            start_index = left / self.dds.d
-            return np.rint(start_index).astype("int64").ravel()
+            left = self.LeftEdge_d - self.ds.domain_left_edge.d
+            start_index = left / self.dds_d
+            self.start_index = np.rint(start_index).astype("int64").ravel()
+            return self.start_index
 
-        pdx = self.Parent.dds.d
-        di = np.rint((self.LeftEdge.d - self.Parent.LeftEdge.d) / pdx)
-        start_index = self.Parent.get_global_startindex() + di
-        self.start_index = (start_index * self.ds.refine_by).astype("int64").ravel()
+        pdx = self.Parent.dds_d
+        di = np.rint((self.LeftEdge_d - self.Parent.LeftEdge_d) / pdx)
+        start_index = self.Parent.get_global_startindex() + di.astype("int64")
+        self.start_index = (start_index * self.ds.refine_by).ravel()
         return self.start_index
 
     def __getitem__(self, key):
@@ -139,6 +140,7 @@ class AMRGridPatch(YTSelectionContainer):
         elif self.ds.dimensionality < 2:
             self.dds[1] = ds.domain_right_edge[1] - ds.domain_left_edge[1]
         self.dds = self.dds.view(YTArray)
+        self.dds_d = self.dds.d
         self.dds.units = self.index.grid_left_edge.units
 
     def __repr__(self):
@@ -170,6 +172,8 @@ class AMRGridPatch(YTSelectionContainer):
         self.ActiveDimensions = h.grid_dimensions[my_ind]
         self.LeftEdge = h.grid_left_edge[my_ind]
         self.RightEdge = h.grid_right_edge[my_ind]
+        self.LeftEdge_d = self.LeftEdge.to("code_length").d
+        self.RightEdge_d = self.RightEdge.to("code_length").d
         # This can be expensive so we allow people to disable this behavior
         # via a config option
         if ytcfg.get("yt", "reconstruct_index"):
@@ -392,19 +396,21 @@ class AMRGridPatch(YTSelectionContainer):
         if self._cache_mask and hash(selector) == self._last_selector_id:
             mask = self._last_mask
         else:
-            mask = selector.fill_mask_regular_grid(self)
+            # note: fill_mask_regular_grid will access .child_mask, triggering
+            # the iteration over child mask
+            mask, count = selector.fill_mask_regular_grid(self)
             if self._cache_mask:
                 self._last_mask = mask
             self._last_selector_id = hash(selector)
             if mask is None:
                 self._last_count = 0
             else:
-                self._last_count = mask.sum()
+                self._last_count = count
         return mask
 
     def select(self, selector, source, dest, offset):
         mask = self._get_selector_mask(selector)
-        count = self.count(selector)
+        count = self._last_count  # count(selector)
         if count == 0:
             return 0
         dim = np.squeeze(self.ds.dimensionality)
