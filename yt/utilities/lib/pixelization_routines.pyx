@@ -2020,3 +2020,169 @@ def normalization_1d_utility(np.float64_t[:] num,
     for i in range(num.shape[0]):
         if den[i] != 0.0:
             num[i] = num[i] / den[i]
+
+
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef cart_to_sphere(np.float_64_t[:] xyz):
+    cdef np.float_64_t[:] vec
+
+    vec = np.zeros((3,))
+    vec[0] = np.sqrt(np.sum(xyz * xyz)) # radius
+    vec[1] = np.arccos(xyz[2] / vec[0]) # phi, the 0 to pi azimuthal angle
+    vec[2] = np.arctan2(xyz[1], xyz[0]) # theta, the 0 to 2pi polar angle
+    if vec[2] < 0:
+        vec[2] = vec[2] + np.pi * 2.0
+
+    return vec
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def pixelize_off_axis_arbitrary(
+                       np.float64_t[:,:] buff,
+                       np.float64_t[:] im_normal,
+                       np.float64_t[:] im_east,
+                       np.float64_t[:] im_west,
+                       np.float64_t[:] native_x,
+                       np.float64_t[:] native_y,
+                       np.float64_t[:] native_z,
+                       np.float64_t[:] native_dx,
+                       np.float64_t[:] native_dy,
+                       np.float64_t[:] native_dz,
+                       np.int_t[:] indices,
+                       np.float64_t[:] data,
+                       bounds,
+                       *,
+                       int return_mask=0,
+):
+    # buff: 2D the image buffer array
+    # native_x, y, z : 1D positions cell centers in their native coordinates
+    # native_x, y, z : 1D positions cell widths in their native coordinates
+    # indices: 1D array, indices of the cells
+    # data : 1D array, actual data values
+    # bounds: the bounds on of the buffer array in buffer coordinates
+
+
+    cdef np.float64_t x_min, x_max, y_min, y_max
+
+    # Some periodicity helpers
+    cdef np.ndarray[np.int64_t, ndim=2] mask
+
+    # counters for when rows/columns get filled
+    cdef np.ndarray[np.int64_t, ndim=1] mask_x
+    cdef np.ndarray[np.int64_t, ndim=1] mask_y
+    mask_x = np.zeros((buff.shape[0]))
+    mask_y = np.zeros((buff.shape[1]))
+    cdef np.ndarray[np.int64_t, ndim=1] xyz
+    x_min = bounds[0]
+    x_max = bounds[1]
+    y_min = bounds[2]
+    y_max = bounds[3]
+
+    mask = np.zeros(buff.shape)
+    xyz = np.zeros((3,))
+    cdef np.ndarray[np.int64_t, ndim=1] le, re
+    le = np.zeros((3,))
+    re = np.zeors((3,))
+    int p, ip  # data grid indices
+    int ib_x, ib_y # buffer indices
+    int imin_x, imin_y, imax_x, imax_y # buffer control ranges
+    int new_imin_x, new_imin_y # buffer control ranges
+    int new_imax_x, new_imax_y # buffer control ranges
+    # these buffer control ranges will allow the loop over
+    # image buffer indices to gradually skip already-filled
+    # rows and columns.
+    new_imin_x = 0
+    new_imax_x = buff.shape[0]
+    new_imin_y = 0
+    new_imax_y = buff.shape[1]
+
+    float b_x, b_y  # in-plane image coordinate
+    with nogil:
+        for ip in range(indices.shape[0]):
+            p = indices[ip]  # current index of full data
+
+            le[0] = native_x[ip] - native_dx[ip]/2
+            re[0] = native_x[ip] + native_dx[ip]/2
+            le[1] = native_y[ip] - native_dy[ip]/2
+            re[1] = native_y[ip] + native_dy[ip]/2
+            le[2] = native_z[ip] - native_dz[ip]/2
+            re[2] = native_z[ip] + native_dz[ip]/2
+
+            # check for total bounds
+            # if outside:
+            #    continue
+
+            # find the image buffer pixel(s) that fall in the current
+            # grid volume if it(they) exist
+
+            imin_x = new_imin_x
+            imax_x = new_imax_x
+
+            for ib_x in range(imin_x, imax_x):
+                if mask_x[ib_x] == buff.shape[1]:
+                   # all y vals at this x have been filled,
+                   # safe to skip this index. But only increment
+                   # the min/max range if the current index is
+                   # adjacent index has been filled.
+                   if ib_x == imin_x:
+                       new_imin_x = ib_x + 1
+                   elif ib_x == imax_x and ib_x + 1 < imax_x:
+                       new_imax_x = ib_x - 1
+                   continue
+
+                imin_y = new_imin_y
+                imax_y = new_imax_y
+
+                for ib_y in range(imin_y, imax_y):
+                    if mask_y[ib_y] == buff.shape[0]:
+                       # all x vals at this y have been filled,
+                       # safe to skip this index. But only increment
+                       # the min/max range if the current index is
+                       # adjacent index has been filled.
+                       if ib_y == imin_y:
+                           new_imin_y = ib_y + 1
+                       elif ib_y == imax_y and ib_y + 1 < imax_y:
+                           new_imax_y = ib_y - 1
+                       continue
+
+                    if mask[ib_x, ib_y] == 1:
+                        # already filled, continue
+                        continue
+
+                    # the in-plane coordinates
+                    x_plane = ib_x * (x_max - x_min) / buff.shape[0] + x_min=
+                    y_plane = ib_y * (y_max - y_min) / buff.shape[1] + y_min
+
+                    # the 3d cartesian location
+                    xyz[0] = x_plane * im_east[0] + y_plane * im_east[0]
+                    xyz[1] = x_plane * im_east[1] + y_plane * im_east[1]
+                    xyz[2] = x_plane * im_east[2] + y_plane * im_east[2]
+
+                    # transform to native coordinates
+                    # this should be a class instead so that it
+                    # is more general than spherical data and so
+                    # the axis ordering could be handled properly
+                    vec_native = cart_to_sphere(xyz)  # assumes r, phi, theta for now
+
+                    # check if this pixel falls in the current volume
+                    if vec_native[0] <= le[0] or  vec_native[0] > re[0]:
+                        continue
+                    if vec_native[1] <= le[1] or  vec_native[1] > re[1]:
+                        continue
+                    if vec_native[2] <= le[2] or  vec_native[2] > re[2]:
+                        continue
+
+                    mask[ib_x, ib_y] += 1
+                    mask_x[ib_x] += 1
+                    mask_y[ib_y] += 1
+
+                    if buff[i,j] != buff[i,j]: buff[i,j] = 0.0
+                    buff[i, j] += data[p]
+
+
+    if return_mask:
+        return mask!=0
