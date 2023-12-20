@@ -2023,29 +2023,84 @@ def normalization_1d_utility(np.float64_t[:] num,
 
 
 
-@cython.cdivision(True)
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cdef cart_to_sphere(np.float_64_t[:] xyz):
-    cdef np.float_64_t[:] vec
-
-    vec = np.zeros((3,))
-    vec[0] = np.sqrt(np.sum(xyz * xyz)) # radius
-    vec[1] = np.arccos(xyz[2] / vec[0]) # phi, the 0 to pi azimuthal angle
-    vec[2] = np.arctan2(xyz[1], xyz[0]) # theta, the 0 to 2pi polar angle
-    if vec[2] < 0:
-        vec[2] = vec[2] + np.pi * 2.0
-
-    return vec
 
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def pixelize_off_axis_arbitrary(
+def transform_buffer_coords_to_native(np.float64_t[:] im_normal,
+                                      np.float64_t[:] im_east,
+                                      np.float64_t[:] im_west,
+                                      np.int_t[:] buff_shape,
+                                      np.float64_t[:,:] bpos_0,
+                                      np.float64_t[:,:] bpos_1,
+                                      np.float64_t[:,:] bpos_2,
+                                      bounds):
+    '''
+    calculates the coordinates of pixels in an image plane
+    in a dataset's native coordinates.
+
+    Parameters
+    ----------
+    im_normal : the normal vector to the image plane
+    im_east : the east vector (x') vector in the image plane
+    im_west : the west vector (y') vector in the image plane
+    bounds: the bounds in image plane coords
+    bpos_0, _1, _2 : pixel coordinate arrays for each dimension
+                    in native coordinates
+    '''
+
+    # loop variables
+
+    cdef np.int_t im_xi, im_yj
+    cdef np.float64_t x_plane, y_plane # in-plane coords
+    cdef np.float64_t p0, p1, p2  # the native coords
+
+    # other vars
+    cdef np.float64_t xmax, ymax, xmin, ymin, dx_n, dy_n
+    cdef np.float64_t xi, yi, zi
+
+    xmin = bounds[0]
+    xmax = bounds[1]
+    ymin = bounds[2]
+    ymax = bounds[3]
+    dx_n = (xmax - xmin) / buff_shape[0]
+    dy_n = (ymax - ymin) / buff_shape[1]
+
+    with nogil:
+        for im_xi in range(0, buff_shape[0]):
+            for im_yj in range(0, buff_shape[1]):
+                # the in-plane coordinates
+                x_plane = im_xi * dx_n + xmin
+                y_plane = im_yj * dy_n + ymin
+
+                # the 3d cartesian location
+                xi = x_plane * im_east[0] + y_plane * im_east[0]
+                yi = x_plane * im_east[1] + y_plane * im_east[1]
+                zi = x_plane * im_east[2] + y_plane * im_east[2]
+
+                # transform to native coordinates
+                # this should be a class instead so that it
+                # is more general than spherical data and so
+                # the axis ordering could be handled properly
+                p0 = math.sqrt(xi*xi + yi*yi + zi*zi) # radius
+                p1 = math.acos(zi / xi) # phi, the 0 to pi azimuthal angle
+                p2 = math.atan2(yi, xi) # theta, the 0 to 2pi polar angle
+                if p2 < 0:
+                    p2 = p2 + math.M_PI * 2.0
+
+                bpos_0[im_xi, im_yj] = p0
+                bpos_1[im_xi, im_yj] = p1
+                bpos_2[im_xi, im_yj] = p2
+
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def pixelize_arbitrary_plane(
                        np.float64_t[:,:] buff,
-                       np.float64_t[:] im_normal,
-                       np.float64_t[:] im_east,
-                       np.float64_t[:] im_west,
+                       np.float64_t[:,:] bpos_0,
+                       np.float64_t[:,:] bpos_1,
+                       np.float64_t[:,:] bpos_2,
                        np.float64_t[:] native_x,
                        np.float64_t[:] native_y,
                        np.float64_t[:] native_z,
@@ -2054,44 +2109,45 @@ def pixelize_off_axis_arbitrary(
                        np.float64_t[:] native_dz,
                        np.int_t[:] indices,
                        np.float64_t[:] data,
-                       bounds,
                        *,
                        int return_mask=0,
 ):
     # buff: 2D the image buffer array
+    # bpos_0, _1, _2: the buffer pixel coordinates in native dataset coordinates
     # native_x, y, z : 1D positions cell centers in their native coordinates
-    # native_x, y, z : 1D positions cell widths in their native coordinates
+    # native_dx, dy, dz : 1D positions cell widths in their native coordinates
     # indices: 1D array, indices of the cells
     # data : 1D array, actual data values
     # bounds: the bounds on of the buffer array in buffer coordinates
 
-
-    cdef np.float64_t x_min, x_max, y_min, y_max
-
-    # Some periodicity helpers
+    #cdef np.float64_t x_min, x_max, y_min, y_max
     cdef np.ndarray[np.int64_t, ndim=2] mask
 
     # counters for when rows/columns get filled
     cdef np.ndarray[np.int64_t, ndim=1] mask_x
     cdef np.ndarray[np.int64_t, ndim=1] mask_y
+
+    # loop variables
+    cdef np.float64_t bpos_0i, bpos_1i, bpos_2i # active buffer coordinates
+    cdef np.ndarray[np.float64_t, ndim=1] le, re # active left/right cell edges
+    cdef np.int64_t p, ip  # active data indices
+    cdef np.int64_t ib_x, ib_y # active buffer indices
+    cdef np.int64_t imin_x, imin_y, imax_x, imax_y # buffer control ranges
+    cdef np.int64_t new_imin_x, new_imin_y # buffer control ranges
+    cdef np.int64_t new_imax_x, new_imax_y # buffer control ranges
+
+    # mask_x and mask_y track how filled that row or column of the
+    # image buffer is. when mask_x[i] matches the number of pxiels in
+    # y direction, that column has been filled.
     mask_x = np.zeros((buff.shape[0]))
     mask_y = np.zeros((buff.shape[1]))
-    cdef np.ndarray[np.int64_t, ndim=1] xyz
-    x_min = bounds[0]
-    x_max = bounds[1]
-    y_min = bounds[2]
-    y_max = bounds[3]
 
-    mask = np.zeros(buff.shape)
-    xyz = np.zeros((3,))
-    cdef np.ndarray[np.int64_t, ndim=1] le, re
+    mask = np.zeros(buff.shape) # global pixel mask
+
+    # initialize all the loop variables and controls
     le = np.zeros((3,))
     re = np.zeors((3,))
-    int p, ip  # data grid indices
-    int ib_x, ib_y # buffer indices
-    int imin_x, imin_y, imax_x, imax_y # buffer control ranges
-    int new_imin_x, new_imin_y # buffer control ranges
-    int new_imax_x, new_imax_y # buffer control ranges
+
     # these buffer control ranges will allow the loop over
     # image buffer indices to gradually skip already-filled
     # rows and columns.
@@ -2100,17 +2156,16 @@ def pixelize_off_axis_arbitrary(
     new_imin_y = 0
     new_imax_y = buff.shape[1]
 
-    float b_x, b_y  # in-plane image coordinate
     with nogil:
         for ip in range(indices.shape[0]):
             p = indices[ip]  # current index of full data
 
-            le[0] = native_x[ip] - native_dx[ip]/2
-            re[0] = native_x[ip] + native_dx[ip]/2
-            le[1] = native_y[ip] - native_dy[ip]/2
-            re[1] = native_y[ip] + native_dy[ip]/2
-            le[2] = native_z[ip] - native_dz[ip]/2
-            re[2] = native_z[ip] + native_dz[ip]/2
+            le[0] = native_x[ip] - native_dx[ip]/2.0
+            re[0] = native_x[ip] + native_dx[ip]/2.0
+            le[1] = native_y[ip] - native_dy[ip]/2.0
+            re[1] = native_y[ip] + native_dy[ip]/2.0
+            le[2] = native_z[ip] - native_dz[ip]/2.0
+            re[2] = native_z[ip] + native_dz[ip]/2.0
 
             # check for total bounds
             # if outside:
@@ -2153,36 +2208,23 @@ def pixelize_off_axis_arbitrary(
                         # already filled, continue
                         continue
 
-                    # the in-plane coordinates
-                    x_plane = ib_x * (x_max - x_min) / buff.shape[0] + x_min=
-                    y_plane = ib_y * (y_max - y_min) / buff.shape[1] + y_min
-
-                    # the 3d cartesian location
-                    xyz[0] = x_plane * im_east[0] + y_plane * im_east[0]
-                    xyz[1] = x_plane * im_east[1] + y_plane * im_east[1]
-                    xyz[2] = x_plane * im_east[2] + y_plane * im_east[2]
-
-                    # transform to native coordinates
-                    # this should be a class instead so that it
-                    # is more general than spherical data and so
-                    # the axis ordering could be handled properly
-                    vec_native = cart_to_sphere(xyz)  # assumes r, phi, theta for now
-
+                    bpos_0i = bpos_0[ib_x, ib_y]
+                    bpos_1i = bpos_1[ib_x, ib_y]
+                    bpos_2i = bpos_2[ib_x, ib_y]
                     # check if this pixel falls in the current volume
-                    if vec_native[0] <= le[0] or  vec_native[0] > re[0]:
+                    if bpos_0i <= le[0] or bpos_0i > re[0]:
                         continue
-                    if vec_native[1] <= le[1] or  vec_native[1] > re[1]:
+                    if bpos_1i <= le[1] or  bpos_1i > re[1]:
                         continue
-                    if vec_native[2] <= le[2] or  vec_native[2] > re[2]:
+                    if bpos_2i <= le[2] or bpos_2i > re[2]:
                         continue
 
                     mask[ib_x, ib_y] += 1
                     mask_x[ib_x] += 1
                     mask_y[ib_y] += 1
 
-                    if buff[i,j] != buff[i,j]: buff[i,j] = 0.0
-                    buff[i, j] += data[p]
-
+                    if buff[ib_x,ib_y] != buff[ib_x,ib_y]: buff[ib_x,ib_y] = 0.0
+                    buff[ib_x, ib_y] += data[p]
 
     if return_mask:
         return mask!=0
