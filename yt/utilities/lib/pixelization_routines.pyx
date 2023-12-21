@@ -2022,150 +2022,67 @@ def normalization_1d_utility(np.float64_t[:] num,
             num[i] = num[i] / den[i]
 
 
-
-
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def transform_buffer_coords_to_native(np.float64_t[:] im_normal,
-                                      np.float64_t[:] im_east,
-                                      np.float64_t[:] im_west,
-                                      np.int_t[:] buff_shape,
-                                      np.float64_t[:,:] bpos_0,
-                                      np.float64_t[:,:] bpos_1,
-                                      np.float64_t[:,:] bpos_2,
-                                      bounds):
-    '''
-    calculates the coordinates of pixels in an image plane
-    in a dataset's native coordinates.
-
-    Parameters
-    ----------
-    im_normal : the normal vector to the image plane
-    im_east : the east vector (x') vector in the image plane
-    im_west : the west vector (y') vector in the image plane
-    bounds: the bounds in image plane coords
-    bpos_0, _1, _2 : pixel coordinate arrays for each dimension
-                    in native coordinates
-    '''
-
-    # loop variables
-
-    cdef np.int_t im_xi, im_yj
-    cdef np.float64_t x_plane, y_plane # in-plane coords
-    cdef np.float64_t p0, p1, p2  # the native coords
-
-    # other vars
-    cdef np.float64_t xmax, ymax, xmin, ymin, dx_n, dy_n
-    cdef np.float64_t xi, yi, zi
-
-    xmin = bounds[0]
-    xmax = bounds[1]
-    ymin = bounds[2]
-    ymax = bounds[3]
-    dx_n = (xmax - xmin) / buff_shape[0]
-    dy_n = (ymax - ymin) / buff_shape[1]
-
-    with nogil:
-        for im_xi in range(0, buff_shape[0]):
-            for im_yj in range(0, buff_shape[1]):
-                # the in-plane coordinates
-                x_plane = im_xi * dx_n + xmin
-                y_plane = im_yj * dy_n + ymin
-
-                # the 3d cartesian location
-                xi = x_plane * im_east[0] + y_plane * im_east[0]
-                yi = x_plane * im_east[1] + y_plane * im_east[1]
-                zi = x_plane * im_east[2] + y_plane * im_east[2]
-
-                # transform to native coordinates
-                # this should be a class instead so that it
-                # is more general than spherical data and so
-                # the axis ordering could be handled properly
-                p0 = math.sqrt(xi*xi + yi*yi + zi*zi) # radius
-                p1 = math.acos(zi / xi) # phi, the 0 to pi azimuthal angle
-                p2 = math.atan2(yi, xi) # theta, the 0 to 2pi polar angle
-                if p2 < 0:
-                    p2 = p2 + math.M_PI * 2.0
-
-                bpos_0[im_xi, im_yj] = p0
-                bpos_1[im_xi, im_yj] = p1
-                bpos_2[im_xi, im_yj] = p2
-
-
-@cython.cdivision(True)
-@cython.boundscheck(False)
-@cython.wraparound(False)
-def pixelize_arbitrary_plane(
-                       np.float64_t[:,:] buff,
-                       np.float64_t[:,:] bpos_0,
-                       np.float64_t[:,:] bpos_1,
-                       np.float64_t[:,:] bpos_2,
-                       np.float64_t[:] native_x,
-                       np.float64_t[:] native_y,
-                       np.float64_t[:] native_z,
-                       np.float64_t[:] native_dx,
-                       np.float64_t[:] native_dy,
-                       np.float64_t[:] native_dz,
+def sample_arbitrary_points_in_grid(
+                       np.float64_t[:] buff,
+                       np.float64_t[:] bpos_0,
+                       np.float64_t[:] bpos_1,
+                       np.float64_t[:] bpos_2,
+                       np.float64_t[:] pos_0,
+                       np.float64_t[:] pos_1,
+                       np.float64_t[:] pos_2,
+                       np.float64_t[:] pos_0_dx,
+                       np.float64_t[:] pos_1_dx,
+                       np.float64_t[:] pos_2_dx,
                        np.int_t[:] indices,
                        np.float64_t[:] data,
                        *,
                        int return_mask=0,
 ):
-    # buff: 2D the image buffer array
-    # bpos_0, _1, _2: the buffer pixel coordinates in native dataset coordinates
-    # native_x, y, z : 1D positions cell centers in their native coordinates
-    # native_dx, dy, dz : 1D positions cell widths in their native coordinates
-    # indices: 1D array, indices of the cells
-    # data : 1D array, actual data values
-    # bounds: the bounds on of the buffer array in buffer coordinates
+    """ a 1D buffer pixelization. maybe you want to reshape it to be an image? or
+        sample an arbitrary set of points? maybe this is useful
 
-    #cdef np.float64_t x_min, x_max, y_min, y_max
-    cdef np.ndarray[np.int64_t, ndim=2] mask
+    Parameters
+    buff: 1d buffer array, modified in place to fill
+    bpos_0, _1, _2: 1D arrays, the coordinates to sample
+    native_x, y, z : 1D arrays, cell centers in their native coordinates
+    native_dx, dy, dz : 1D positions cell widths in their native coordinates
+    indices: 1D array, indices of the cells
+    data : 1D array, actual data values
+    """
 
     # counters for when rows/columns get filled
-    cdef np.ndarray[np.int64_t, ndim=1] mask_x
-    cdef np.ndarray[np.int64_t, ndim=1] mask_y
+    cdef np.ndarray[np.int64_t, ndim=1] mask
 
     # loop variables
     cdef np.float64_t bpos_0i, bpos_1i, bpos_2i # active buffer coordinates
-    cdef np.ndarray[np.float64_t, ndim=1] le, re # active left/right cell edges
+    cdef np.float64_t le_0, le_1, le_2 # activate left edge
+    cdef np.float64_t re_0, re_1, re_2 # active rigth edge
     cdef np.int64_t p, ip  # active data indices
-    cdef np.int64_t ib_x, ib_y # active buffer indices
-    cdef np.int64_t imin_x, imin_y, imax_x, imax_y # buffer control ranges
-    cdef np.int64_t new_imin_x, new_imin_y # buffer control ranges
-    cdef np.int64_t new_imax_x, new_imax_y # buffer control ranges
-
-    # mask_x and mask_y track how filled that row or column of the
-    # image buffer is. when mask_x[i] matches the number of pxiels in
-    # y direction, that column has been filled.
-    mask_x = np.zeros((buff.shape[0]))
-    mask_y = np.zeros((buff.shape[1]))
-
-    mask = np.zeros(buff.shape) # global pixel mask
+    cdef np.int64_t ib # active buffer index
+    cdef np.int64_t ib_min, ib_max # buffer control ranges
+    cdef np.int64_t new_ib_min, new_ib_max # buffer control ranges
 
     # initialize all the loop variables and controls
-    le = np.zeros((3,))
-    re = np.zeors((3,))
-
+    mask = np.zeros((buff.shape[0],), "int64") # global pixel mask
     # these buffer control ranges will allow the loop over
     # image buffer indices to gradually skip already-filled
-    # rows and columns.
-    new_imin_x = 0
-    new_imax_x = buff.shape[0]
-    new_imin_y = 0
-    new_imax_y = buff.shape[1]
+    # pixels.
+    new_ib_min = 0
+    new_ib_max = buff.shape[0]
 
     with nogil:
         for ip in range(indices.shape[0]):
             p = indices[ip]  # current index of full data
 
-            le[0] = native_x[ip] - native_dx[ip]/2.0
-            re[0] = native_x[ip] + native_dx[ip]/2.0
-            le[1] = native_y[ip] - native_dy[ip]/2.0
-            re[1] = native_y[ip] + native_dy[ip]/2.0
-            le[2] = native_z[ip] - native_dz[ip]/2.0
-            re[2] = native_z[ip] + native_dz[ip]/2.0
+            le_0 = pos_0[ip] - pos_0_dx[ip]/2.0
+            re_0 = pos_0[ip] + pos_0_dx[ip]/2.0
+            le_1 = pos_1[ip] - pos_1_dx[ip]/2.0
+            re_1 = pos_1[ip] + pos_1_dx[ip]/2.0
+            le_2 = pos_2[ip] - pos_2_dx[ip]/2.0
+            re_2 = pos_2[ip] + pos_2_dx[ip]/2.0
 
             # check for total bounds
             # if outside:
@@ -2174,57 +2091,38 @@ def pixelize_arbitrary_plane(
             # find the image buffer pixel(s) that fall in the current
             # grid volume if it(they) exist
 
-            imin_x = new_imin_x
-            imax_x = new_imax_x
+            ib_min = new_ib_min
+            ib_max = new_ib_max
+            for ib in range(ib_min, ib_max):
 
-            for ib_x in range(imin_x, imax_x):
-                if mask_x[ib_x] == buff.shape[1]:
-                   # all y vals at this x have been filled,
-                   # safe to skip this index. But only increment
-                   # the min/max range if the current index is
-                   # adjacent index has been filled.
-                   if ib_x == imin_x:
-                       new_imin_x = ib_x + 1
-                   elif ib_x == imax_x and ib_x + 1 < imax_x:
-                       new_imax_x = ib_x - 1
-                   continue
+                if mask[ib] == 1:
+                    # already filled!
+                    continue
 
-                imin_y = new_imin_y
-                imax_y = new_imax_y
+                bpos_0i = bpos_0[ib]
+                bpos_1i = bpos_1[ib]
+                bpos_2i = bpos_2[ib]
+                # check if this pixel falls in the current volume
+                if bpos_0i <= le_0 or bpos_0i > re_0:
+                    continue
+                if bpos_1i <= le_1 or  bpos_1i > re_1:
+                    continue
+                if bpos_2i <= le_2 or bpos_2i > re_2:
+                    continue
 
-                for ib_y in range(imin_y, imax_y):
-                    if mask_y[ib_y] == buff.shape[0]:
-                       # all x vals at this y have been filled,
-                       # safe to skip this index. But only increment
-                       # the min/max range if the current index is
-                       # adjacent index has been filled.
-                       if ib_y == imin_y:
-                           new_imin_y = ib_y + 1
-                       elif ib_y == imax_y and ib_y + 1 < imax_y:
-                           new_imax_y = ib_y - 1
-                       continue
+                mask[ib] += 1
+                # check if we can modify the min/max range for the
+                # next loop through. would be better to pop elements
+                # out...
+                if ib == ib_min and ib + 1 < ib_max:
+                   new_ib_min = ib + 1
+                elif ib == ib_max and ib - 1 > ib_min:
+                   new_ib_max = ib - 1
 
-                    if mask[ib_x, ib_y] == 1:
-                        # already filled, continue
-                        continue
+                if buff[ib] != buff[ib]:
+                    buff[ib] = 0.0
 
-                    bpos_0i = bpos_0[ib_x, ib_y]
-                    bpos_1i = bpos_1[ib_x, ib_y]
-                    bpos_2i = bpos_2[ib_x, ib_y]
-                    # check if this pixel falls in the current volume
-                    if bpos_0i <= le[0] or bpos_0i > re[0]:
-                        continue
-                    if bpos_1i <= le[1] or  bpos_1i > re[1]:
-                        continue
-                    if bpos_2i <= le[2] or bpos_2i > re[2]:
-                        continue
-
-                    mask[ib_x, ib_y] += 1
-                    mask_x[ib_x] += 1
-                    mask_y[ib_y] += 1
-
-                    if buff[ib_x,ib_y] != buff[ib_x,ib_y]: buff[ib_x,ib_y] = 0.0
-                    buff[ib_x, ib_y] += data[p]
+                buff[ib] += data[p]
 
     if return_mask:
         return mask!=0
