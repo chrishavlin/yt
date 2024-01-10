@@ -151,6 +151,11 @@ class YTCuttingPlane(YTSelectionContainer2D):
     then it pixelizes the appropriate data onto the plane without
     interpolation.
 
+    The slice here is done in the index dimensions of a dataset. To slice along
+    an arbitrary cartesian plane through a dataset defined in non-cartesian
+    coordinates (e.g., a plane through a spherial dataset), use
+    `YTCartesianCuttingPlane`, accesible from `ds.cutting_cartesian`.
+
     Parameters
     ----------
     normal : array_like
@@ -275,6 +280,15 @@ class YTCuttingPlane(YTSelectionContainer2D):
         else:
             raise KeyError(field)
 
+    def _get_oblique_window_parameters(self,normal, center, width):
+        from yt.visualization.plot_window import (
+            get_oblique_window_parameters,
+        )
+        bounds, center_rot = get_oblique_window_parameters(
+            normal, center, width, self.ds
+        )
+        return bounds, center_rot
+
     def to_pw(self, fields=None, center="center", width=None, axes_unit=None):
         r"""Create a :class:`~yt.visualization.plot_window.PWViewerMPL` from this
         object.
@@ -294,8 +308,8 @@ class YTCuttingPlane(YTSelectionContainer2D):
             get_oblique_window_parameters,
         )
 
-        (bounds, center_rot) = get_oblique_window_parameters(
-            normal, center, width, self.ds
+        bounds, center_rot = self._get_oblique_window_parameters(
+            normal, center, width
         )
         pw = PWViewerMPL(
             self,
@@ -368,3 +382,85 @@ class YTCuttingPlane(YTSelectionContainer2D):
         bounds = (-width / 2.0, width / 2.0, -height / 2.0, height / 2.0)
         frb = FixedResolutionBuffer(self, bounds, resolution, periodic=periodic)
         return frb
+
+def _spherical_to_cartesian(fcoords):
+    pass
+
+def _cartesian_passhtrough(fcoords):
+    x = fcoords[:, 0]
+    y = fcoords[:, 1]
+    z = fcoords[:, 2]
+    return x, y, z
+
+class YTCartesianCuttingPlane(YTCuttingPlane):
+
+    def __init__(        self,
+        normal,
+        center,
+        north_vector=None,
+        ds=None,
+        field_parameters=None,
+        data_source=None,
+                 ):
+
+        # validate geometry here.
+
+        # if cartesian
+        self._fcoords_transform_func = _cartesian_passhtrough
+        # if spherical data
+        # self._fcoords_transform_func = _spherical_to_cartesian
+
+        super().__init__(normal,
+                         center,
+                         north_vector=north_vector,
+                         ds=ds,
+                         field_parameters=field_parameters,
+                         data_source=data_source)
+
+    def _generate_container_field(self, field):
+        if self._current_chunk is None:
+            self.index._identify_base_chunk(self)
+        if field == "px":
+            x, y, z = self._fcoords_transform_func(self._current_chunk.fcoords)
+            x = x - self.center[0]
+            y = y - self.center[1]
+            z = z - self.center[2]
+            tr = np.zeros(x.size, dtype="float64")
+            tr = self.ds.arr(tr, "code_length")
+            tr += x * self._x_vec[0]
+            tr += y * self._x_vec[1]
+            tr += z * self._x_vec[2]
+            return tr
+        elif field == "py":
+            x, y, z = self._fcoords_transform_func(self._current_chunk.fcoords)
+            x = x - self.center[0]
+            y = y - self.center[1]
+            z = z - self.center[2]
+            tr = np.zeros(x.size, dtype="float64")
+            tr = self.ds.arr(tr, "code_length")
+            tr += x * self._y_vec[0]
+            tr += y * self._y_vec[1]
+            tr += z * self._y_vec[2]
+            return tr
+        elif field == "pz":
+            x, y, z = self._fcoords_transform_func(self._current_chunk.fcoords)
+            x = x - self.center[0]
+            y = y - self.center[1]
+            z = z - self.center[2]
+            tr = np.zeros(x.size, dtype="float64")
+            tr = self.ds.arr(tr, "code_length")
+            tr += x * self._norm_vec[0]
+            tr += y * self._norm_vec[1]
+            tr += z * self._norm_vec[2]
+            return tr
+        elif field == "pdx":
+            return self._current_chunk.fwidth[:, 0] * 0.5
+        elif field == "pdy":
+            return self._current_chunk.fwidth[:, 1] * 0.5
+        elif field == "pdz":
+            return self._current_chunk.fwidth[:, 2] * 0.5
+        else:
+            raise KeyError(field)
+
+    def _get_oblique_window_parameters(self, normal, center, width):
+        raise NotImplementedError()
