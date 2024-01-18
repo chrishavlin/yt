@@ -17,17 +17,19 @@ def test_spherical_cutting_plane():
     plane_center = np.array([0., 0., 1.])
     plane = HelpfulPlaneObject(normal, plane_center)
     scp = spherical_cutting_selector(plane)
-
+    assert scp.r_min == 1.0
+    print(scp.c_xyz)
+    print(scp.c_rtp)
+    
     # left/right edge values are given in spherical coordinates with
     # order of (r, theta, phi) where
     #   theta is the azimuthal/latitudinal
     #   phi is the polar/longitudinal angle (bounds 0 to 2pi).
-
-    dtheta_2 = (np.pi/3) / 2
-    theta_c = dtheta_2
-    dphi_2 = (np.pi/3) / 2
-    phi_c = dphi_2
-    left_edge = np.array([0.8, theta_c - dtheta_2, phi_c - dphi_2])
-    right_edge = np.array([1.2, theta_c + dtheta_2, phi_c + dphi_2])
-
-    assert scp._select_bbox(left_edge, right_edge)
+    
+    def _in_rads(x):
+        return x*np.pi/180
+    
+    left_edge = np.array([0.8, _in_rads(5), _in_rads(5)])
+    right_edge = np.array([1.2, _in_rads(45), _in_rads(45)])
+    
+    assert scp.select_bbox(left_edge, right_edge)
