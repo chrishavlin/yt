@@ -41,7 +41,7 @@ cdef class CuttingPlaneSelector(SelectorObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @cython.cdivision(True)
-    cdef void transform_vertex_pos(self, np.float64_t pos_in[3], np.float64_t pos_out[3]):
+    cdef void transform_vertex_pos(self, np.float64_t pos_in[3], np.float64_t pos_out[3]) noexcept nogil:
         pass
 
     @cython.boundscheck(False)
@@ -77,9 +77,9 @@ cdef class CuttingPlaneSelector(SelectorObject):
                 for k in range(2):
                     pos[2] = arr[k][2]
                     self.transform_vertex_pos(pos, pos)
-                    gd = d
+                    gd = self.d
                     for n in range(3):
-                        gd += pos[n] * norm_vec[n]
+                        gd += pos[n] * self.norm_vec[n]
                     # this allows corners and faces on the low-end to
                     # collide, while not selecting cells on the high-side
                     if i == 0 and j == 0 and k == 0 :
@@ -178,29 +178,8 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneSelector):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @cython.cdivision(True)
-    cdef void transform_vertex_pos(self, np.float64_t pos_in[3], np.float64_t pos_out[3]):
+    cdef void transform_vertex_pos(self, np.float64_t pos_in[3], np.float64_t pos_out[3]) noexcept nogil:
         self.transform_rtp_to_xyz(pos_in, pos_out)
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    @cython.cdivision(True)
-    cdef void cartesian_bounding_box(self,
-                                     np.float64_t left[3],
-                                     np.float64_t right[3],
-                                     np.float64_t left_c[3],
-                                     np.float64_t right_c[3],
-                                     ) noexcept nogil:
-
-
-        # need to convert every vertex (not just bounds)
-        # and then find min/max
-        cdef pos[3]
-
-        pos[0] = left[0] or right[0]
-        pos[1] = left[1] or right[1]
-        pos[2] = left[1] or right[1]
-        self.transform_rtp_to_xyz()
-        store in cartesian min/max
 
 
     @cython.boundscheck(False)
