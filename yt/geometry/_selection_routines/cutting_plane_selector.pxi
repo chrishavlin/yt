@@ -101,7 +101,7 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneSelector):
     def __init__(self, dobj):
 
         cdef np.float64_t xyz[3]
-
+        cdef int i
         super().__init__(dobj)
 
         # any points at r < |d|, where d is the minimum distance-vector to the
@@ -109,8 +109,9 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneSelector):
         self.r_min = fabs(self.d)
 
         # also record the phi and theta coordinates of the point on the plane
-        # closest to the origin       .
-        xyz = self._normal * self.d  # cartesian position
+        # closest to the origin
+        for i in range(3):
+            xyz[i] = self.norm_vec[i] * self.d  # cartesian position
         self.transform_xyz_to_rtp(xyz, self.c_rtp)
 
 
@@ -152,6 +153,10 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneSelector):
          # check as usual
          self.transform_rtp_to_xyz(left_edge, left_edge_c)
          self.transform_rtp_to_xyz(right_edge, right_edge_c)
+         # note: after converting to cartesian, the left/right edge values
+         # may no longer be ordered properly. But because _select_cut_plane_bbox
+         # simply iterates through each corner, we do not need to correct for
+         # the improper order.
          selected = _select_cut_plane_bbox(self.norm_vec, self.d, left_edge_c, right_edge_c)
 
          if selected == 0:
@@ -172,6 +177,23 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneSelector):
 
 
          return selected
+
+    def _select_bbox(self,
+                  left_edge_in,
+                  right_edge_in):
+
+         # useful for direct testing without having to initialize
+         # full yt data objects
+
+         cdef np.float64_t left_edge[3]
+         cdef np.float64_t right_edge[3]
+
+         for i in range(3):
+             left_edge[i] = left_edge_in[i]
+             right_edge[i] = right_edge_in[i]
+
+         return self.select_bbox(left_edge, right_edge)
+
 
 
 cutting_selector = CuttingPlaneSelector
