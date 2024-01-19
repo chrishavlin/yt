@@ -32,4 +32,4 @@ def test_spherical_cutting_plane():
     left_edge = np.array([0.8, _in_rads(5), _in_rads(5)])
     right_edge = np.array([1.2, _in_rads(45), _in_rads(45)])
     
-    assert scp.select_bbox(left_edge, right_edge)
+    assert scp._select_bbox_temp(left_edge, right_edge)
