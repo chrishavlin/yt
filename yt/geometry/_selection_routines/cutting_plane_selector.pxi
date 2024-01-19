@@ -1,5 +1,6 @@
 from libc.math cimport sin, cos, atan2, sqrt, acos
 
+
 cdef class CuttingPlaneSelector(SelectorObject):
     cdef public np.float64_t norm_vec[3]  # the unit-normal for the plane
     cdef public np.float64_t d  # the shortest distance from plane to origin
@@ -42,7 +43,10 @@ cdef class CuttingPlaneSelector(SelectorObject):
     @cython.wraparound(False)
     @cython.cdivision(True)
     cdef void transform_vertex_pos(self, np.float64_t pos_in[3], np.float64_t pos_out[3]) noexcept nogil:
-        pass
+        # for cartesian, no need to transform
+        cdef int i 
+        for i in range(3):
+            pos_out[i] = pos_in[i]
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
@@ -64,6 +68,7 @@ cdef class CuttingPlaneSelector(SelectorObject):
         cdef int i, j, k, n
         cdef np.float64_t *arr[2]
         cdef np.float64_t pos[3]
+        cdef np.float64_t pos_out[3]
         cdef np.float64_t gd
         arr[0] = left_edge
         arr[1] = right_edge
@@ -76,10 +81,12 @@ cdef class CuttingPlaneSelector(SelectorObject):
                 pos[1] = arr[j][1]
                 for k in range(2):
                     pos[2] = arr[k][2]
-                    self.transform_vertex_pos(pos, pos)
+                    
+                    self.transform_vertex_pos(pos, pos_out)
+
                     gd = self.d
                     for n in range(3):
-                        gd += pos[n] * self.norm_vec[n]
+                        gd += pos_out[n] * self.norm_vec[n]
                     # this allows corners and faces on the low-end to
                     # collide, while not selecting cells on the high-side
                     if i == 0 and j == 0 and k == 0 :
@@ -211,20 +218,20 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneSelector):
          selected = self._select_bbox(left_edge, right_edge)
 
          if selected == 0:
-              # there is one special case to consider!
-              # When all vertices lie on one side of the plane, intersection
-              # is still possible if the plane intersects the outer cusp of the
-              # spherical volume element. **BUT** if we've reached this far,
-              # the only way for this to happen is if the position of the point
-              # on the plane that is closest to the origin lies within the
-              # element itself.
-              if self.c_rtp[0] > left_edge[0]:
-                  for idim in range(1,3):
-                      if self.c_rtp[idim] <= left_edge[idim]:
-                          return 0
-                      if self.c_rtp[idim] >= right_edge[idim]:
-                          return 0
-                  return 1
+            # there is one special case to consider!
+            # When all vertices lie on one side of the plane, intersection
+            # is still possible if the plane intersects the outer cusp of the
+            # spherical volume element. **BUT** if we've reached this far,
+            # the only way for this to happen is if the position of the point
+            # on the plane that is closest to the origin lies within the
+            # element itself.
+            if self.c_rtp[0] > left_edge[0]:
+                for idim in range(1,3):
+                    if self.c_rtp[idim] <= left_edge[idim]:
+                        return 0
+                    if self.c_rtp[idim] >= right_edge[idim]:
+                        return 0
+                return 1
 
 
          return selected
