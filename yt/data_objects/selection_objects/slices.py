@@ -15,10 +15,12 @@ from yt.funcs import (
     validate_object,
     validate_width_tuple,
 )
+from yt.utilities.logger import ytLogger as mylog
 from yt.utilities.exceptions import YTNotInsideNotebook
 from yt.utilities.minimal_representation import MinimalSliceData
 from yt.utilities.orientation import Orientation
-
+from yt.geometry.geometry_enum import Geometry
+from yt.geometry import selection_routines
 
 class YTSlice(YTSelectionContainer2D):
     """
@@ -169,7 +171,12 @@ class YTCuttingPlane(YTSelectionContainer2D):
     data_source: optional
         Draw the selection from the provided data source rather than
         all data associated with the dataset
-
+    slice_on_index: bool, optional
+        If True (the default), then the plane is taken as index-coordinates.
+        If False, then non-cartesian datasets will be intersected with a
+        cartesian plane. For non-cartesian datasets you **probably** want
+        slice_on_index=False. This argument has no effect on cartesian
+        datasets.
     Notes
     -----
 
@@ -204,6 +211,8 @@ class YTCuttingPlane(YTSelectionContainer2D):
         ds=None,
         field_parameters=None,
         data_source=None,
+        *,
+        slice_on_index=True,
     ):
         validate_3d_array(normal)
         validate_center(center)
@@ -228,6 +237,26 @@ class YTCuttingPlane(YTSelectionContainer2D):
         self.set_field_parameter("cp_x_vec", self._x_vec)
         self.set_field_parameter("cp_y_vec", self._y_vec)
         self.set_field_parameter("cp_z_vec", self._norm_vec)
+        self.slice_on_index = slice_on_index
+
+    def _get_selector_class(self):
+        s_module = getattr(self, "_selector_module", selection_routines)
+        if self.slice_on_index:
+            if self.ds.geometry is not Geometry.CARTESIAN:
+                # this is the old behavior
+                mylog.info("Creating cutting plane on non-cartesian geometry "
+                           "with slice_on_index=True. Results may be unexpected.")
+            type_name = self._type_name
+        elif self.ds.geometry is Geometry.CARTESIAN:
+            type_name = self._type_name
+        elif self.ds.geometry is Geometry.SPHERICAL:
+            type_name = self._type_name + "_spherical"
+        else:
+            raise NotImplementedError("Off-axis cartesian slices are not implemented"
+                                      "for this geometry.")
+
+        sclass = getattr(s_module, f"{type_name}_selector", None)
+        return sclass
 
     @property
     def normal(self):

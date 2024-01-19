@@ -42,23 +42,7 @@ cdef class CuttingPlaneSelector(SelectorObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @cython.cdivision(True)
-    cdef void transform_vertex_pos(self, np.float64_t pos_in[3], np.float64_t pos_out[3]) noexcept nogil:
-        # for cartesian, no need to transform
-        cdef int i 
-        for i in range(3):
-            pos_out[i] = pos_in[i]
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    @cython.cdivision(True)
     cdef int select_bbox(self, np.float64_t left_edge[3],
-                               np.float64_t right_edge[3]) noexcept nogil:
-        return self._select_bbox(left_edge, right_edge)
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    @cython.cdivision(True)
-    cdef int _select_bbox(self, np.float64_t left_edge[3],
                                np.float64_t right_edge[3]) noexcept nogil:
         # the bbox selection here works by calculating the signed-distance from
         # the plane to each vertex of the bounding box. If there is no
@@ -68,7 +52,6 @@ cdef class CuttingPlaneSelector(SelectorObject):
         cdef int i, j, k, n
         cdef np.float64_t *arr[2]
         cdef np.float64_t pos[3]
-        cdef np.float64_t pos_out[3]
         cdef np.float64_t gd
         arr[0] = left_edge
         arr[1] = right_edge
@@ -81,12 +64,9 @@ cdef class CuttingPlaneSelector(SelectorObject):
                 pos[1] = arr[j][1]
                 for k in range(2):
                     pos[2] = arr[k][2]
-                    
-                    self.transform_vertex_pos(pos, pos_out)
-
                     gd = self.d
                     for n in range(3):
-                        gd += pos_out[n] * self.norm_vec[n]
+                        gd += pos[n] * self.norm_vec[n]
                     # this allows corners and faces on the low-end to
                     # collide, while not selecting cells on the high-side
                     if i == 0 and j == 0 and k == 0 :
@@ -144,7 +124,72 @@ cdef class CuttingPlaneSelector(SelectorObject):
     def _get_state_attnames(self):
         return ("d", "norm_vec")
 
-cdef class SphericalCuttingPlaneSelector(CuttingPlaneSelector):
+
+cdef class CuttingPlaneTransformed(CuttingPlaneSelector):
+    # a base class for cartesian cutting planes through data that is not
+    # in cartesian coordinates.
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.cdivision(True)
+    cdef void transform_vertex_pos(self, np.float64_t pos_in[3], np.float64_t pos_out[3]) noexcept nogil:
+        # child class must implement: must transform from dataset native
+        # coordinates to cartesian coordinates (with (x,y,z) ordering)
+        pass
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.cdivision(True)
+    cdef int select_bbox(self, np.float64_t left_edge[3],
+                               np.float64_t right_edge[3]) noexcept nogil:
+        # child classes may over-ride if needed
+        return self._select_bbox(left_edge, right_edge)
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.cdivision(True)
+    cdef int _select_bbox(self, np.float64_t left_edge[3],
+                               np.float64_t right_edge[3]) noexcept nogil:
+
+        # the bbox selection here works by calculating the signed-distance from
+        # the plane to each vertex of the bounding box. If there is no
+        # intersection, the signed-distance for every vertex will have the same
+        # sign whereas if the sign flips then the plane must intersect the
+        # bounding box.
+        cdef int i, j, k, n
+        cdef np.float64_t *arr[2]
+        cdef np.float64_t pos[3]
+        cdef np.float64_t pos_cart[3]
+        cdef np.float64_t gd
+        arr[0] = left_edge
+        arr[1] = right_edge
+        all_under = 1
+        all_over = 1
+        # Check each corner
+        for i in range(2):
+            pos[0] = arr[i][0]
+            for j in range(2):
+                pos[1] = arr[j][1]
+                for k in range(2):
+                    pos[2] = arr[k][2]
+                    self.transform_vertex_pos(pos, pos_cart)
+                    gd = self.d
+                    for n in range(3):
+                        gd += pos_cart[n] * self.norm_vec[n]
+                    # this allows corners and faces on the low-end to
+                    # collide, while not selecting cells on the high-side
+                    if i == 0 and j == 0 and k == 0 :
+                        if gd <= 0: all_over = 0
+                        if gd >= 0: all_under = 0
+                    else :
+                        if gd < 0: all_over = 0
+                        if gd > 0: all_under = 0
+        if all_over == 1 or all_under == 1:
+            return 0
+        return 1
+
+
+cdef class SphericalCuttingPlaneSelector(CuttingPlaneTransformed):
 
     # interesection of a cartesian plane with data in spherical coordinates.
     # expected ordering is (r, theta, phi), where theta is the azimuthal/latitudinal
@@ -168,7 +213,7 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneSelector):
         # closest to the origin
         for i in range(3):
             xyz[i] = - self.norm_vec[i] * self.d  # cartesian position
-            self.c_xyz[i] = xyz[i] # temp for debugging
+            self.c_xyz[i] = xyz[i] # TODO: delete. temp for debugging
         self.transform_xyz_to_rtp(xyz, self.c_rtp)
 
 
@@ -236,7 +281,7 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneSelector):
 
          return selected
 
-    def _select_bbox_temp(self,
+    def _select_single_bbox(self,
                   left_edge_in,
                   right_edge_in):
 
@@ -252,27 +297,11 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneSelector):
 
          return self.select_bbox(left_edge, right_edge)
 
-    def check_edge_conversion(self, left_edge_in, right_edge_in):
-        # debugging, delete eventually
-
-        cdef np.float64_t left_edge[3]
-        cdef np.float64_t right_edge[3]
-        cdef np.float64_t left_edge_c[3]
-        cdef np.float64_t right_edge_c[3]
-
-        for i in range(3):
-            left_edge[i] = left_edge_in[i]
-            right_edge[i] = right_edge_in[i]
-
-        self.transform_rtp_to_xyz(left_edge, left_edge_c)
-        self.transform_rtp_to_xyz(right_edge, right_edge_c)
-        print(left_edge_c)
-        print(right_edge_c)
 
 
 
 cutting_selector = CuttingPlaneSelector
 
-spherical_cutting_selector = SphericalCuttingPlaneSelector
+cutting_spherical_selector = SphericalCuttingPlaneSelector
 
 
