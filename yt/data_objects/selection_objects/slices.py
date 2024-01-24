@@ -15,12 +15,13 @@ from yt.funcs import (
     validate_object,
     validate_width_tuple,
 )
-from yt.utilities.logger import ytLogger as mylog
+from yt.geometry import selection_routines
+from yt.geometry.geometry_enum import Geometry
 from yt.utilities.exceptions import YTNotInsideNotebook
+from yt.utilities.logger import ytLogger as mylog
 from yt.utilities.minimal_representation import MinimalSliceData
 from yt.utilities.orientation import Orientation
-from yt.geometry.geometry_enum import Geometry
-from yt.geometry import selection_routines
+
 
 class YTSlice(YTSelectionContainer2D):
     """
@@ -239,21 +240,44 @@ class YTCuttingPlane(YTSelectionContainer2D):
         self.set_field_parameter("cp_z_vec", self._norm_vec)
         self.slice_on_index = slice_on_index
 
+        self._to_cartesian_func = self._get_to_cartesian_func()
+
+    def _get_to_cartesian_func(self):
+        if self.slice_on_index:
+            if self.ds.geometry is not Geometry.CARTESIAN:
+                # this is the old behavior
+                mylog.info(
+                    "Creating cutting plane on non-cartesian geometry "
+                    "with slice_on_index=True. Results may be unexpected."
+                )
+            return _cartesian_passthrough
+        elif self.ds.geometry is Geometry.CARTESIAN:
+            return _cartesian_passthrough
+        elif self.ds.geometry is Geometry.SPHERICAL:
+            return _spherical_to_cartesian
+        else:
+            raise NotImplementedError(
+                "Off-axis cartesian slices are not implemented" "for this geometry."
+            )
+
     def _get_selector_class(self):
         s_module = getattr(self, "_selector_module", selection_routines)
         if self.slice_on_index:
             if self.ds.geometry is not Geometry.CARTESIAN:
                 # this is the old behavior
-                mylog.info("Creating cutting plane on non-cartesian geometry "
-                           "with slice_on_index=True. Results may be unexpected.")
+                mylog.info(
+                    "Creating cutting plane on non-cartesian geometry "
+                    "with slice_on_index=True. Results may be unexpected."
+                )
             type_name = self._type_name
         elif self.ds.geometry is Geometry.CARTESIAN:
             type_name = self._type_name
         elif self.ds.geometry is Geometry.SPHERICAL:
             type_name = self._type_name + "_spherical"
         else:
-            raise NotImplementedError("Off-axis cartesian slices are not implemented"
-                                      "for this geometry.")
+            raise NotImplementedError(
+                "Off-axis cartesian slices are not implemented" "for this geometry."
+            )
 
         sclass = getattr(s_module, f"{type_name}_selector", None)
         return sclass
@@ -262,13 +286,20 @@ class YTCuttingPlane(YTSelectionContainer2D):
     def normal(self):
         return self._norm_vec
 
+    def _current_chunk_xyz(self):
+        x = self._current_chunk.fcoords[:, 0]
+        y = self._current_chunk.fcoords[:, 1]
+        z = self._current_chunk.fcoords[:, 2]
+        return self._to_cartesian(x, y, z)
+
     def _generate_container_field(self, field):
         if self._current_chunk is None:
             self.index._identify_base_chunk(self)
         if field == "px":
-            x = self._current_chunk.fcoords[:, 0] - self.center[0]
-            y = self._current_chunk.fcoords[:, 1] - self.center[1]
-            z = self._current_chunk.fcoords[:, 2] - self.center[2]
+            x, y, z = self._current_chunk_xyz()
+            x = x - self.center[0]
+            y = y - self.center[1]
+            z = z - self.center[2]
             tr = np.zeros(x.size, dtype="float64")
             tr = self.ds.arr(tr, "code_length")
             tr += x * self._x_vec[0]
@@ -276,9 +307,10 @@ class YTCuttingPlane(YTSelectionContainer2D):
             tr += z * self._x_vec[2]
             return tr
         elif field == "py":
-            x = self._current_chunk.fcoords[:, 0] - self.center[0]
-            y = self._current_chunk.fcoords[:, 1] - self.center[1]
-            z = self._current_chunk.fcoords[:, 2] - self.center[2]
+            x, y, z = self._current_chunk_xyz()
+            x = x - self.center[0]
+            y = y - self.center[1]
+            z = z - self.center[2]
             tr = np.zeros(x.size, dtype="float64")
             tr = self.ds.arr(tr, "code_length")
             tr += x * self._y_vec[0]
@@ -286,9 +318,10 @@ class YTCuttingPlane(YTSelectionContainer2D):
             tr += z * self._y_vec[2]
             return tr
         elif field == "pz":
-            x = self._current_chunk.fcoords[:, 0] - self.center[0]
-            y = self._current_chunk.fcoords[:, 1] - self.center[1]
-            z = self._current_chunk.fcoords[:, 2] - self.center[2]
+            x, y, z = self._current_chunk_xyz()
+            x = x - self.center[0]
+            y = y - self.center[1]
+            z = z - self.center[2]
             tr = np.zeros(x.size, dtype="float64")
             tr = self.ds.arr(tr, "code_length")
             tr += x * self._norm_vec[0]
@@ -303,6 +336,27 @@ class YTCuttingPlane(YTSelectionContainer2D):
             return self._current_chunk.fwidth[:, 2] * 0.5
         else:
             raise KeyError(field)
+
+    def _plane_coords(self, in_plane_x, in_plane_y):
+        xpts, ypts = np.meshgrid(in_plane_x, in_plane_y)
+
+        # actual x, y, z locations of each point in the plane
+        c = self.center.d
+        x_global = xpts * self._x_vec[0] + ypts * self._y_vec[0] + c[0]
+        y_global = xpts * self._x_vec[1] + ypts * self._y_vec[1] + c[1]
+        z_global = xpts * self._x_vec[2] + ypts * self._y_vec[2] + c[2]
+
+        if self.ds.geometry is Geometry.SPHERICAL and self.slice_on_index is False:
+            # get spherical coords of points in plane
+            r_plane = np.sqrt(x_global**2 + y_global**2 + z_global**2)
+            theta_plane = np.arccos(z_global / (r_plane + 1e-8))  # 0 to pi angle
+            phi_plane = np.arctan2(y_global, x_global)  # 0 to 2pi angle
+            # arctan2 returns -pi to pi
+            # phi_plane_02pi = phi_plane.copy()
+            phi_plane[phi_plane < 0] = phi_plane[phi_plane < 0] + 2 * np.pi
+            return r_plane, theta_plane, phi_plane
+        else:
+            return x_global, y_global, z_global
 
     def to_pw(self, fields=None, center="center", width=None, axes_unit=None):
         r"""Create a :class:`~yt.visualization.plot_window.PWViewerMPL` from this
@@ -392,8 +446,28 @@ class YTCuttingPlane(YTSelectionContainer2D):
             height = self.ds.quan(height[0], height[1])
         if not is_sequence(resolution):
             resolution = (resolution, resolution)
-        from yt.visualization.fixed_resolution import FixedResolutionBuffer
+        from yt.visualization.fixed_resolution import (
+            FixedResolutionBuffer,
+            OffAxisSliceFixedResolutionBuffer,
+        )
 
         bounds = (-width / 2.0, width / 2.0, -height / 2.0, height / 2.0)
-        frb = FixedResolutionBuffer(self, bounds, resolution, periodic=periodic)
+
+        if self.ds.geometry is Geometry.SPHERICAL and self.slice_on_index is False:
+            frb = OffAxisSliceFixedResolutionBuffer(
+                self, bounds, resolution, periodic=periodic
+            )
+        else:
+            frb = FixedResolutionBuffer(self, bounds, resolution, periodic=periodic)
         return frb
+
+
+def _cartesian_passthrough(x, y, z):
+    return x, y, z
+
+
+def _spherical_to_cartesian(r, theta, phi):
+    z = r * np.cos(theta)
+    x = r * np.sin(theta) * np.cos(phi)
+    y = r * np.sin(theta) * np.sin(phi)
+    return x, y, z
