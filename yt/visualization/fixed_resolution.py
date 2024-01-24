@@ -33,6 +33,8 @@ else:
 if TYPE_CHECKING:
     from yt.visualization.fixed_resolution_filters import FixedResolutionBufferFilter
 
+from yt.data_objects.selection_objects.slices import YTCuttingPlane
+
 
 class FixedResolutionBuffer:
     r"""
@@ -691,13 +693,37 @@ class OffAxisProjectionFixedResolutionBuffer(FixedResolutionBuffer):
         self.mask[item] = None
 
 
-class OffAxisSliceFixedResolutionBuffer(FixedResolutionBuffer):
+class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
     """
     This object is a subclass of
     :class:`yt.visualization.fixed_resolution.FixedResolutionBuffer`
     that supports off axis slices when a coordinate transformation
     is required
     """
+
+    def __init__(
+        self,
+        data_source,
+        bounds,
+        buff_size,
+        antialias=True,
+        periodic=False,
+        *,
+        filters: Optional[list["FixedResolutionBufferFilter"]] = None,
+    ):
+        if not isinstance(data_source, YTCuttingPlane):
+            raise ValueError(
+                "The MixedCoordSliceFixedResolutionBuffer only "
+                "works with YTCuttingPlane objects."
+            )
+        super().__init__(
+            data_source,
+            bounds,
+            buff_size,
+            antialias=antialias,
+            periodic=periodic,
+            filters=filters,
+        )
 
     @override
     def _generate_image_and_mask(self, item) -> None:
@@ -710,45 +736,21 @@ class OffAxisSliceFixedResolutionBuffer(FixedResolutionBuffer):
         data_source = self.data_source
         buff = np.zeros(self.buff_size)
 
-        # container fields: on-plane coords of cells
-        # xplane = data_source['pdx']
-        # yplane = data_source['pdy']
-        # zplane = data_source['pdz'] # == 0 if on plane
-
         # get the spherical coords of pixels on the plane
         x_plane = np.linspace(self.bounds[0], self.bounds[1], self.buff_size[0])
         y_plane = np.linspace(self.bounds[2], self.bounds[3], self.buff_size[1])
-        buff_pos0, buff_pos1, buff_pos2 = data_source._plane_coords(x_plane, y_plane)
+        x_plane, y_plane = np.meshgrid(x_plane, y_plane)
+
+        b_pos0, b_pos1, b_pos2 = data_source._plane_coords(x_plane, y_plane)
 
         buff = np.ravel(buff).astype(np.float64)
-        buff_pos0 = np.ravel(buff_pos0).astype(np.float64)
-        buff_pos1 = np.ravel(buff_pos1).astype(np.float64)
-        buff_pos2 = np.ravel(buff_pos2).astype(np.float64)
-
-        #
-        # elem_pos0 = data_source["index", "r"].astype(np.float64)
-        # elem_pos1 = data_source["index", "theta"].astype(np.float64)
-        # elem_pos2 = data_source["index", "phi"].astype(np.float64)
-        # dr = data_source["index", "dr"].astype(np.float64)
-        # dth = data_source["index", "dtheta"].astype(np.float64)
-        # dphi = data_source["index", "dphi"].astype(np.float64)
-        # data = data_source[item].astype(np.float64)
-        # sample_arbitrary_points_in_1d_buffer(
-        #     buff,
-        #     buff_pos0,
-        #     buff_pos1,
-        #     buff_pos2,
-        #     elem_pos0,
-        #     elem_pos1,
-        #     elem_pos2,
-        #     dr,
-        #     dth,
-        #     dphi,
-        #     data,  # the data, need to handle units!
-        # )
+        b_pos0 = np.ravel(b_pos0).astype(np.float64)
+        b_pos1 = np.ravel(b_pos1).astype(np.float64)
+        b_pos2 = np.ravel(b_pos2).astype(np.float64)
 
         chunk_masks = []
         for chunk in data_source.chunks([], "io"):
+            # hardcoded coords here, need to fix that
             elem_pos0 = chunk["index", "r"].astype(np.float64)
             elem_pos1 = chunk["index", "theta"].astype(np.float64)
             elem_pos2 = chunk["index", "phi"].astype(np.float64)
@@ -758,9 +760,9 @@ class OffAxisSliceFixedResolutionBuffer(FixedResolutionBuffer):
 
             msk = sample_arbitrary_points_in_1d_buffer(
                 buff,
-                buff_pos0,
-                buff_pos1,
-                buff_pos2,
+                b_pos0,
+                b_pos1,
+                b_pos2,
                 elem_pos0,
                 elem_pos1,
                 elem_pos2,
@@ -773,7 +775,6 @@ class OffAxisSliceFixedResolutionBuffer(FixedResolutionBuffer):
             chunk_masks.append(msk)
 
         mask = np.any(np.array(chunk_masks), axis=0)
-
         buff = buff.reshape(self.buff_size)
         ia = ImageArray(buff, info=self._get_info(item))
         self.data[item] = ia

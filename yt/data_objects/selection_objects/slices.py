@@ -338,13 +338,14 @@ class YTCuttingPlane(YTSelectionContainer2D):
             raise KeyError(field)
 
     def _plane_coords(self, in_plane_x, in_plane_y):
-        xpts, ypts = np.meshgrid(in_plane_x, in_plane_y)
+        # calculates the 3d coordinates of points on a plane in the
+        # native coordinate system of the dataset.
 
         # actual x, y, z locations of each point in the plane
         c = self.center.d
-        x_global = xpts * self._x_vec[0] + ypts * self._y_vec[0] + c[0]
-        y_global = xpts * self._x_vec[1] + ypts * self._y_vec[1] + c[1]
-        z_global = xpts * self._x_vec[2] + ypts * self._y_vec[2] + c[2]
+        x_global = in_plane_x * self._x_vec[0] + in_plane_y * self._y_vec[0] + c[0]
+        y_global = in_plane_x * self._x_vec[1] + in_plane_y * self._y_vec[1] + c[1]
+        z_global = in_plane_x * self._x_vec[2] + in_plane_y * self._y_vec[2] + c[2]
 
         if self.ds.geometry is Geometry.SPHERICAL and self.slice_on_index is False:
             # get spherical coords of points in plane
@@ -448,13 +449,13 @@ class YTCuttingPlane(YTSelectionContainer2D):
             resolution = (resolution, resolution)
         from yt.visualization.fixed_resolution import (
             FixedResolutionBuffer,
-            OffAxisSliceFixedResolutionBuffer,
+            MixedCoordSliceFixedResolutionBuffer,
         )
 
         bounds = (-width / 2.0, width / 2.0, -height / 2.0, height / 2.0)
 
         if self.ds.geometry is Geometry.SPHERICAL and self.slice_on_index is False:
-            frb = OffAxisSliceFixedResolutionBuffer(
+            frb = MixedCoordSliceFixedResolutionBuffer(
                 self, bounds, resolution, periodic=periodic
             )
         else:
