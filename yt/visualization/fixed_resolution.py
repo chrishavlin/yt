@@ -18,6 +18,7 @@ from yt.utilities.lib.api import (  # type: ignore
 from yt.utilities.lib.pixelization_routines import (
     pixelize_cylinder,
     rotate_particle_coord,
+    sample_arbitrary_points_in_1d_buffer,
 )
 from yt.utilities.math_utils import compute_stddev_image
 from yt.utilities.on_demand_imports import _h5py as h5py
@@ -688,6 +689,95 @@ class OffAxisProjectionFixedResolutionBuffer(FixedResolutionBuffer):
         ia = ImageArray(buff.swapaxes(0, 1), info=self._get_info(item))
         self.data[item] = ia
         self.mask[item] = None
+
+
+class OffAxisSliceFixedResolutionBuffer(FixedResolutionBuffer):
+    """
+    This object is a subclass of
+    :class:`yt.visualization.fixed_resolution.FixedResolutionBuffer`
+    that supports off axis slices when a coordinate transformation
+    is required
+    """
+
+    @override
+    def _generate_image_and_mask(self, item) -> None:
+        mylog.info(
+            "Making a fixed resolution buffer of (%s) %d by %d",
+            item,
+            self.buff_size[0],
+            self.buff_size[1],
+        )
+        data_source = self.data_source
+        buff = np.zeros(self.buff_size)
+
+        # container fields: on-plane coords of cells
+        # xplane = data_source['pdx']
+        # yplane = data_source['pdy']
+        # zplane = data_source['pdz'] # == 0 if on plane
+
+        # get the spherical coords of pixels on the plane
+        x_plane = np.linspace(self.bounds[0], self.bounds[1], self.buff_size[0])
+        y_plane = np.linspace(self.bounds[2], self.bounds[3], self.buff_size[1])
+        buff_pos0, buff_pos1, buff_pos2 = data_source._plane_coords(x_plane, y_plane)
+
+        buff = np.ravel(buff).astype(np.float64)
+        buff_pos0 = np.ravel(buff_pos0).astype(np.float64)
+        buff_pos1 = np.ravel(buff_pos1).astype(np.float64)
+        buff_pos2 = np.ravel(buff_pos2).astype(np.float64)
+
+        #
+        # elem_pos0 = data_source["index", "r"].astype(np.float64)
+        # elem_pos1 = data_source["index", "theta"].astype(np.float64)
+        # elem_pos2 = data_source["index", "phi"].astype(np.float64)
+        # dr = data_source["index", "dr"].astype(np.float64)
+        # dth = data_source["index", "dtheta"].astype(np.float64)
+        # dphi = data_source["index", "dphi"].astype(np.float64)
+        # data = data_source[item].astype(np.float64)
+        # sample_arbitrary_points_in_1d_buffer(
+        #     buff,
+        #     buff_pos0,
+        #     buff_pos1,
+        #     buff_pos2,
+        #     elem_pos0,
+        #     elem_pos1,
+        #     elem_pos2,
+        #     dr,
+        #     dth,
+        #     dphi,
+        #     data,  # the data, need to handle units!
+        # )
+
+        chunk_masks = []
+        for chunk in data_source.chunks([], "io"):
+            elem_pos0 = chunk["index", "r"].astype(np.float64)
+            elem_pos1 = chunk["index", "theta"].astype(np.float64)
+            elem_pos2 = chunk["index", "phi"].astype(np.float64)
+            dr = chunk["index", "dr"].astype(np.float64)
+            dth = chunk["index", "dtheta"].astype(np.float64)
+            dphi = chunk["index", "dphi"].astype(np.float64)
+
+            msk = sample_arbitrary_points_in_1d_buffer(
+                buff,
+                buff_pos0,
+                buff_pos1,
+                buff_pos2,
+                elem_pos0,
+                elem_pos1,
+                elem_pos2,
+                dr,
+                dth,
+                dphi,
+                chunk[item].astype(np.float64),  # the data, need to handle units!
+                return_mask=1,
+            )
+            chunk_masks.append(msk)
+
+        mask = np.any(np.array(chunk_masks), axis=0)
+
+        buff = buff.reshape(self.buff_size)
+        ia = ImageArray(buff, info=self._get_info(item))
+        self.data[item] = ia
+        self.mask[item] = mask.reshape(self.buff_size)
 
 
 class ParticleImageBuffer(FixedResolutionBuffer):
