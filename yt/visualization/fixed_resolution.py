@@ -725,6 +725,11 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
             filters=filters,
         )
 
+    def image_xy(self):
+        x_plane = np.linspace(self.bounds[0], self.bounds[1], self.buff_size[0])
+        y_plane = np.linspace(self.bounds[2], self.bounds[3], self.buff_size[1])
+        return x_plane, y_plane
+
     @override
     def _generate_image_and_mask(self, item) -> None:
         mylog.info(
@@ -737,8 +742,7 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
         buff = np.zeros(self.buff_size)
 
         # get the spherical coords of pixels on the plane
-        x_plane = np.linspace(self.bounds[0], self.bounds[1], self.buff_size[0])
-        y_plane = np.linspace(self.bounds[2], self.bounds[3], self.buff_size[1])
+        x_plane, y_plane = self.image_xy()
         x_plane, y_plane = np.meshgrid(x_plane, y_plane)
 
         b_pos0, b_pos1, b_pos2 = data_source._plane_coords(x_plane, y_plane)

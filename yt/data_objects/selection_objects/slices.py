@@ -349,7 +349,7 @@ class YTCuttingPlane(YTSelectionContainer2D):
 
         if self.ds.geometry is Geometry.SPHERICAL and self.slice_on_index is False:
             # get spherical coords of points in plane
-            r_plane = np.sqrt(x_global**2 + y_global**2 + z_global**2)
+            r_plane = np.sqrt(x_global.d**2 + y_global.d**2 + z_global.d**2)
             theta_plane = np.arccos(z_global / (r_plane + 1e-8))  # 0 to pi angle
             phi_plane = np.arctan2(y_global, x_global)  # 0 to 2pi angle
             # arctan2 returns -pi to pi
@@ -359,6 +359,18 @@ class YTCuttingPlane(YTSelectionContainer2D):
         else:
             return x_global, y_global, z_global
 
+    @property
+    def _frb_class(self):
+        from yt.visualization.fixed_resolution import (
+            FixedResolutionBuffer,
+            MixedCoordSliceFixedResolutionBuffer,
+        )
+
+        if self.ds.geometry is Geometry.SPHERICAL and self.slice_on_index is False:
+            return MixedCoordSliceFixedResolutionBuffer
+        else:
+            return FixedResolutionBuffer
+
     def to_pw(self, fields=None, center="center", width=None, axes_unit=None):
         r"""Create a :class:`~yt.visualization.plot_window.PWViewerMPL` from this
         object.
@@ -367,12 +379,19 @@ class YTCuttingPlane(YTSelectionContainer2D):
         object, which can then be moved around, zoomed, and on and on.  All
         behavior of the plot window is relegated to that routine.
         """
+
+        if self.slice_on_index is False:
+            msg = (
+                "to_pw is not implemented for mixed coordinate "
+                "slices. For now, use to_frb() to generate a "
+                "fixed resolution array."
+            )
+            raise NotImplementedError(msg)
         normal = self.normal
         center = self.center
         self.fields = list(iter_fields(fields)) + [
             k for k in self.field_data.keys() if k not in self._key_fields
         ]
-        from yt.visualization.fixed_resolution import FixedResolutionBuffer
         from yt.visualization.plot_window import (
             PWViewerMPL,
             get_oblique_window_parameters,
@@ -388,7 +407,7 @@ class YTCuttingPlane(YTSelectionContainer2D):
             origin="center-window",
             periodic=False,
             oblique=True,
-            frb_generator=FixedResolutionBuffer,
+            frb_generator=self._frb_class,
             plot_type="OffAxisSlice",
         )
         if axes_unit is not None:
@@ -447,20 +466,9 @@ class YTCuttingPlane(YTSelectionContainer2D):
             height = self.ds.quan(height[0], height[1])
         if not is_sequence(resolution):
             resolution = (resolution, resolution)
-        from yt.visualization.fixed_resolution import (
-            FixedResolutionBuffer,
-            MixedCoordSliceFixedResolutionBuffer,
-        )
 
         bounds = (-width / 2.0, width / 2.0, -height / 2.0, height / 2.0)
-
-        if self.ds.geometry is Geometry.SPHERICAL and self.slice_on_index is False:
-            frb = MixedCoordSliceFixedResolutionBuffer(
-                self, bounds, resolution, periodic=periodic
-            )
-        else:
-            frb = FixedResolutionBuffer(self, bounds, resolution, periodic=periodic)
-        return frb
+        return self._frb_class(self, bounds, resolution, periodic=periodic)
 
 
 def _cartesian_passthrough(x, y, z):
