@@ -753,7 +753,17 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
         b_pos2 = np.ravel(b_pos2).astype(np.float64)
 
         chunk_masks = []
-        for chunk in data_source.chunks([], "io"):
+        fields_needed = [
+            ("index", "r"),
+            ("index", "theta"),
+            ("index", "phi"),
+            ("index", "dr"),
+            ("index", "dtheta"),
+            ("index", "dphi"),
+            item,
+        ]
+        for chunk in data_source.chunks(fields_needed, "io"):
+            # for chunk in parallel_objects(data_source.chunks(fields_needed, "io")):
             # hardcoded coords here, need to fix that
             elem_pos0 = chunk["index", "r"].astype(np.float64)
             elem_pos1 = chunk["index", "theta"].astype(np.float64)
@@ -779,6 +789,10 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
             chunk_masks.append(msk)
 
         mask = np.any(np.array(chunk_masks), axis=0)
+        # if self.ds.index.comm.size > 1:  # frbs dont have a self.comm...
+        #     buff = self.ds.index.mpi_allreduce(buff, op="sum")
+        #     mask = self.ds.index.mpi_allreduce(mask, op="sum")
+
         buff = buff.reshape(self.buff_size)
         ia = ImageArray(buff, info=self._get_info(item))
         self.data[item] = ia
