@@ -258,7 +258,7 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneTransformed):
              # intersection impossible!
              return 0
 
-         # run the plane-vertex distance check (vertex positions are converted to 
+         # run the plane-vertex distance check (vertex positions are converted to
          # cartesian within _select_bbox
          selected = self._select_bbox(left_edge, right_edge)
 
@@ -302,6 +302,4 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneTransformed):
 
 cutting_selector = CuttingPlaneSelector
 
-cutting_spherical_selector = SphericalCuttingPlaneSelector
-
-
+cutting_mixed_spherical_selector = SphericalCuttingPlaneSelector

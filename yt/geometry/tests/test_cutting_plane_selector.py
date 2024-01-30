@@ -1,7 +1,8 @@
-import pytest
-from yt.geometry.selection_routines import spherical_cutting_selector
 import numpy as np
-from yt.testing import fake_amr_ds
+import pytest
+
+from yt.geometry.selection_routines import cutting_mixed_spherical_selector
+
 
 class HelpfulPlaneObject:
     # a bare-bones skeleton of a data object to use for initializing
@@ -13,10 +14,9 @@ class HelpfulPlaneObject:
 
 @pytest.fixture
 def xy_plane_at_001():
-    normal = np.array([0., 0., 1.])
-    plane_center = np.array([0., 0., 1.])
+    normal = np.array([0.0, 0.0, 1.0])
+    plane_center = np.array([0.0, 0.0, 1.0])
     return HelpfulPlaneObject(normal, plane_center)
-
 
 
 def test_spherical_cutting_plane_spots(xy_plane_at_001):
@@ -24,16 +24,16 @@ def test_spherical_cutting_plane_spots(xy_plane_at_001):
     # with some spherical volume elements
 
     # initialize selector
-    scp = spherical_cutting_selector(xy_plane_at_001)
+    scp = cutting_mixed_spherical_selector(xy_plane_at_001)
     assert scp.r_min == 1.0
-    
+
     # left/right edge values are given in spherical coordinates with
     # order of (r, theta, phi) where
     #   theta is the azimuthal/latitudinal
     #   phi is the polar/longitudinal angle (bounds 0 to 2pi).
-    
+
     def _in_rads(x):
-        return x*np.pi/180
+        return x * np.pi / 180
 
     # should intersect
     left_edge = np.array([0.8, _in_rads(5), _in_rads(5)])
@@ -48,22 +48,23 @@ def test_spherical_cutting_plane_spots(xy_plane_at_001):
 
 def test_spherical_cutting_plane(xy_plane_at_001):
     import numpy as np
+
     from yt.testing import fake_amr_ds
+
     ds = fake_amr_ds(geometry="spherical")
 
     # this plane will miss the dataset entirely
-    normal = np.array([0., 0., 1.])
-    plane_center = np.array([0., 0., 1.1])
-    slc = ds.cutting(normal, plane_center, slice_on_index=False)
-    assert len(slc[('stream', 'Density')]) == 0
+    normal = np.array([0.0, 0.0, 1.0])
+    plane_center = np.array([0.0, 0.0, 1.1])
+    slc = ds.cutting_mixed(normal, plane_center)
+    assert len(slc[("stream", "Density")]) == 0
 
     # this one will not.
-    normal = np.array([0., 0., 1.])
-    plane_center = np.array([0., 0., 0.5])
-    slc = ds.cutting(normal, plane_center, slice_on_index=False)
-    r = slc[('index', 'r')]
-    theta = slc[('index', 'theta')]
-    phi = slc[('index', 'phi')]
+    normal = np.array([0.0, 0.0, 1.0])
+    plane_center = np.array([0.0, 0.0, 0.5])
+    slc = ds.cutting_mixed(normal, plane_center)
+    r = slc[("index", "r")]
+    theta = slc[("index", "theta")]
     # r cannot be smaller than the distance from plane to origin
     assert np.min(r) >= plane_center[2]
 
@@ -71,10 +72,10 @@ def test_spherical_cutting_plane(xy_plane_at_001):
     # depends on the size of the elements, the closeness here
     # was found empirically
     z = r * np.cos(theta)
-    max_z = np.max(np.abs(z.to('code_length').d - 0.5))
+    max_z = np.max(np.abs(z.to("code_length").d - 0.5))
     assert np.isclose(max_z, 0.04212724)
+
 
 def test_spherical_cutting_plane_frb():
     # future image test
     pass
-

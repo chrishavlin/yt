@@ -8,7 +8,7 @@ def test_cutting_plane_mixed_coords():
     ds = fake_amr_ds(geometry="spherical")
     normal = np.array([0.0, 0.0, 1.0])
     plane_center = np.array([0.0, 0.0, 0.5])
-    slc = ds.cutting(normal, plane_center, slice_on_index=False)
+    slc = ds.cutting_mixed(normal, plane_center)
     frb = slc.to_frb(2.0, 800)
     bvals = frb[("index", "r")]
     mask = frb.get_mask(("index", "r"))
@@ -17,12 +17,14 @@ def test_cutting_plane_mixed_coords():
 
 
 def test_cutting_plane_mixed_coords_answer():
-    # will require file
+    # TODO: make this an answer test
     ds = yt.load_sample("KeplerianDisk")
     normal = np.array([0.0, 0.0, 1.0])
     plane_center = np.array([0.0, 0.0, 0.5])
-    slc = ds.cutting(normal, plane_center, slice_on_index=False)
+    slc = ds.cutting_mixed(normal, plane_center)
     frb = slc.to_frb(10.0, 800)
     bvals = frb[("athena_pp", "dens")]
     mask = frb.get_mask(("athena_pp", "dens"))
     bvals[~mask] = np.nan
+
+    # make a plot or something.

@@ -33,7 +33,9 @@ else:
 if TYPE_CHECKING:
     from yt.visualization.fixed_resolution_filters import FixedResolutionBufferFilter
 
-from yt.data_objects.selection_objects.slices import YTCuttingPlane
+from yt.data_objects.selection_objects.slices import (
+    YTCuttingPlaneMixedCoords,
+)
 
 
 class FixedResolutionBuffer:
@@ -703,7 +705,7 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
 
     def __init__(
         self,
-        data_source,
+        data_source: YTCuttingPlaneMixedCoords,
         bounds,
         buff_size,
         antialias=True,
@@ -711,10 +713,10 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
         *,
         filters: Optional[list["FixedResolutionBufferFilter"]] = None,
     ):
-        if not isinstance(data_source, YTCuttingPlane):
+        if not isinstance(data_source, YTCuttingPlaneMixedCoords):
             raise ValueError(
                 "The MixedCoordSliceFixedResolutionBuffer only "
-                "works with YTCuttingPlane objects."
+                "works with YTCuttingPlaneMixedCoords objects."
             )
         super().__init__(
             data_source,
@@ -725,9 +727,17 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
             filters=filters,
         )
 
+    def _1d_sample_points(self, axisid: int):
+        # get a 1d array of sample points along a dimension
+        bmin_i = self.bounds[axisid * 2]
+        bmax_i = self.bounds[axisid * 2 + 1]
+        buff_size_i = self.buff_size[axisid]
+        dx_i = (bmax_i - bmin_i) / (buff_size_i + 1)
+        return np.linspace(bmin_i + dx_i, bmax_i + dx_i, buff_size_i)
+
     def image_xy(self):
-        x_plane = np.linspace(self.bounds[0], self.bounds[1], self.buff_size[0])
-        y_plane = np.linspace(self.bounds[2], self.bounds[3], self.buff_size[1])
+        x_plane = self._1d_sample_points(0)
+        y_plane = self._1d_sample_points(1)
         return x_plane, y_plane
 
     @override
@@ -741,10 +751,10 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
         data_source = self.data_source
         buff = np.zeros(self.buff_size)
 
-        # get the spherical coords of pixels on the plane
+        # get the coordinates of the plane in the coordinate system of the
+        # underlying dataset (the "native" coordinates)
         x_plane, y_plane = self.image_xy()
         x_plane, y_plane = np.meshgrid(x_plane, y_plane)
-
         b_pos0, b_pos1, b_pos2 = data_source._plane_coords(x_plane, y_plane)
 
         buff = np.ravel(buff).astype(np.float64)
@@ -753,36 +763,24 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
         b_pos2 = np.ravel(b_pos2).astype(np.float64)
 
         chunk_masks = []
-        fields_needed = [
-            ("index", "r"),
-            ("index", "theta"),
-            ("index", "phi"),
-            ("index", "dr"),
-            ("index", "dtheta"),
-            ("index", "dphi"),
+        pos0, pos1, pos2, dpos0, dpos1, dpos2 = data_source._index_fields
+        fields_needed = data_source._index_fields + [
             item,
         ]
         for chunk in data_source.chunks(fields_needed, "io"):
             # for chunk in parallel_objects(data_source.chunks(fields_needed, "io")):
-            # hardcoded coords here, need to fix that
-            elem_pos0 = chunk["index", "r"].astype(np.float64)
-            elem_pos1 = chunk["index", "theta"].astype(np.float64)
-            elem_pos2 = chunk["index", "phi"].astype(np.float64)
-            dr = chunk["index", "dr"].astype(np.float64)
-            dth = chunk["index", "dtheta"].astype(np.float64)
-            dphi = chunk["index", "dphi"].astype(np.float64)
 
             msk = sample_arbitrary_points_in_1d_buffer(
                 buff,
                 b_pos0,
                 b_pos1,
                 b_pos2,
-                elem_pos0,
-                elem_pos1,
-                elem_pos2,
-                dr,
-                dth,
-                dphi,
+                chunk[pos0].astype(np.float64),
+                chunk[pos1].astype(np.float64),
+                chunk[pos2].astype(np.float64),
+                chunk[dpos0].astype(np.float64),
+                chunk[dpos1].astype(np.float64),
+                chunk[dpos2].astype(np.float64),
                 chunk[item].astype(np.float64),  # the data, need to handle units!
                 return_mask=1,
             )
