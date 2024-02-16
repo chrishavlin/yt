@@ -510,7 +510,71 @@ class YTCuttingPlaneMixedCoords(YTCuttingPlane):
         z = self._current_chunk.fcoords[:, 2]
         return self._native_to_cartesian(x, y, z)
 
+    def _generate_container_fields(self):
+        from yt.utilities.lib.misc_utilities import _cartesian_bboxes_for_spherical
+
+        if self._current_chunk is None:
+            self.index._identify_base_chunk(self)
+
+        # get the cartesian bounding boxes for the elements
+        r_ax = self.ds.coordinates.axis_id['r']
+        th_ax = self.ds.coordinates.axis_id['theta']
+        ph_ax = self.ds.coordinates.axis_id['phi']
+        r = self._current_chunk.fcoords[:, r_ax]
+        theta = self._current_chunk.fcoords[:, th_ax]
+        phi = self._current_chunk.fcoords[:, ph_ax]
+        dr = self._current_chunk.fwidth[:, r_ax]
+        dtheta = self._current_chunk.fwidth[:, th_ax]
+        dphi = self._current_chunk.fwidth[:, ph_ax]
+
+        xyz = [np.full(r.shape, np.nan) for _ in range(3)]
+        dxyz = [np.full(r.shape, np.nan) for _ in range(3)]
+
+        _cartesian_bboxes_for_spherical(
+            r,
+            theta,
+            phi,
+            dr,
+            dtheta,
+            dphi,
+            xyz[0],
+            xyz[1],
+            xyz[2],
+            dxyz[0],
+            dxyz[1],
+            dxyz[2],
+        )
+
+        # project onto the plane
+        px = np.zeros(xyz[0].size, dtype="float64")
+        px = self.ds.arr(px, "code_length")
+        py = np.zeros(xyz[0].size, dtype="float64")
+        py = self.ds.arr(py, "code_length")
+        pz = np.zeros(xyz[0].size, dtype="float64")
+        pz = self.ds.arr(pz, "code_length")
+        for i in range(3):
+            xyz[i] = xyz[i] - self.center[i]
+            px += xyz[i] * self._x_vec[i]
+            py += xyz[i] * self._y_vec[i]
+            pz += xyz[i] * self._norm_vec[i]
+
+        pdx, pdy, pdz = dxyz
+
+        self.field_data['px'] = px
+        self.field_data['py'] = py
+        self.field_data['pz'] = pz
+        self.field_data['dpx'] = pdx * 0.5
+        self.field_data['dpy'] = pdy * 0.5
+        self.field_data['dpz'] = pdz * 0.5
+
     def _generate_container_field(self, field):
-        # note: px, py, pz will be correct but pdx, pdy and pdz will **NOT**
-        # be sensible.
-        return super()._generate_container_field(field)
+
+        if field in ("px", "py", "pz", "pdx", "pdy", "pdz"):
+            try:
+                return self.field_data[field]
+            except KeyError:
+                # generate them all in a single pass
+                self._generate_container_fields()
+            return self.field_data[field]
+        else:
+            raise KeyError(field)

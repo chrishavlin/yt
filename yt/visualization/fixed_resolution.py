@@ -18,7 +18,7 @@ from yt.utilities.lib.api import (  # type: ignore
 from yt.utilities.lib.pixelization_routines import (
     pixelize_cylinder,
     rotate_particle_coord,
-    sample_arbitrary_points_in_1d_buffer,
+    pixelize_off_axis_spherical,
 )
 from yt.utilities.math_utils import compute_stddev_image
 from yt.utilities.on_demand_imports import _h5py as h5py
@@ -757,33 +757,37 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
         x_plane, y_plane = np.meshgrid(x_plane, y_plane)
         b_pos0, b_pos1, b_pos2 = data_source._plane_coords(x_plane, y_plane)
 
-        buff = np.ravel(buff).astype(np.float64)
-        b_pos0 = np.ravel(b_pos0).astype(np.float64)
-        b_pos1 = np.ravel(b_pos1).astype(np.float64)
-        b_pos2 = np.ravel(b_pos2).astype(np.float64)
-
         chunk_masks = []
         pos0, pos1, pos2, dpos0, dpos1, dpos2 = data_source._index_fields
         fields_needed = data_source._index_fields + [
             item,
         ]
+
         for chunk in data_source.chunks(fields_needed, "io"):
             # for chunk in parallel_objects(data_source.chunks(fields_needed, "io")):
-
-            msk = sample_arbitrary_points_in_1d_buffer(
-                buff,
-                b_pos0,
-                b_pos1,
-                b_pos2,
-                chunk[pos0].astype(np.float64),
-                chunk[pos1].astype(np.float64),
-                chunk[pos2].astype(np.float64),
-                chunk[dpos0].astype(np.float64),
-                chunk[dpos1].astype(np.float64),
-                chunk[dpos2].astype(np.float64),
-                chunk[item].astype(np.float64),  # the data, need to handle units!
-                return_mask=1,
+            # indxs = np.argsort(chunk[dpos0])[::-1].astype(np.int_)
+            indxs = np.arange(0, chunk[pos0].size)
+            msk = pixelize_off_axis_spherical(
+                    buff,
+                    b_pos0,
+                    b_pos1,
+                    b_pos2,
+                    chunk[pos0].astype(np.float64),
+                    chunk[pos1].astype(np.float64),
+                    chunk[pos2].astype(np.float64),
+                    chunk[dpos0].astype(np.float64),
+                    chunk[dpos1].astype(np.float64),
+                    chunk[dpos2].astype(np.float64),
+                    self.data_source.center,
+                    self.data_source._norm_vec,
+                    self.data_source._x_vec,
+                    self.data_source._y_vec,
+                    indxs,
+                    chunk[item].astype(np.float64),
+                    self.bounds,
+                    return_mask=1,
             )
+
             chunk_masks.append(msk)
 
         mask = np.any(np.array(chunk_masks), axis=0)
