@@ -1176,7 +1176,6 @@ cdef void _cartesian_bounds_of_spherical_element(np.float64_t r_i,
     cdef np.float64_t h_dphi, h_dtheta, h_dr, r_r
     cdef np.float64_t xi, yi, zi, r_lr, theta_lr, phi_lr, phi_lr2, theta_lr2
     cdef np.float64_t xli, yli, zli, xri, yri, zri, r_xy, r_xy2
-    cdef np.float64_t xc_i, yc_i, zc_i, dx_i, dy_i, dz_i
     cdef int isign_r, isign_ph, isign_th
     cdef np.float64_t sign_r, sign_th, sign_ph
 
@@ -1264,7 +1263,7 @@ cdef void _cartesian_bounds_of_spherical_element(np.float64_t r_i,
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def _cartesian_bboxes_for_spherical(np.float64_t[:] r,
+def cartesian_bboxes_for_spherical(np.float64_t[:] r,
                                       np.float64_t[:] theta,
                                       np.float64_t[:] phi,
                                       np.float64_t[:] dr,
@@ -1278,11 +1277,13 @@ def _cartesian_bboxes_for_spherical(np.float64_t[:] r,
                                       np.float64_t[:] dz,
                                       ):
     # calculates the cartesian bounding boxes around spherical volume elements
-    # x, y, z: cartesian centers of bounding boxes
+    #
+    # r, theta, phi : spherical coordinates of element centers
+    # dr, dtheta, dphi : element widths in spherical coordinates
+    # x, y, z: cartesian centers of bounding boxes, modified in place
+    # dx, dy, dz : cartesian widths of bounding boxes, modified in place
 
-    # dx, dy, dz : cartesian widths of bounding boxes
     cdef int i, n_r
-    cdef np.float64_t xc_i, yc_i, zc_i, dx_i, dy_i, dz_i
     cdef np.float64_t xyz_i[3]
     cdef np.float64_t dxyz_i[3]
 

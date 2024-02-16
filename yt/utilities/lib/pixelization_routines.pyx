@@ -2153,17 +2153,21 @@ def pixelize_off_axis_spherical(
     # buff
     #   image buffer 2d array
     # buff_r, buff_theta, buff_phi
-    #   spherical coordinates of image pixels
+    #   spherical coordinates of image pixels, 2d arrays
     # r, phi, theta
-    #   data coordinates
+    #   data coordinates in spherical coordinates
     # dr, dphi, dtheta
-    #   element widths
-    # px, py, pz
-    #   centers of cartesian bounding boxes around volume elements
-    # pdx, pdy, pdz
-    #   widths of cartesian bounding boxes
+    #   element widths in spherical coordinates
+    # plane_c
+    #   the cartesian coordinates of the plane center point
+    # plane_normal
+    #   normal vector for the plane
+    # plane_east
+    #   in-plane +x vector
+    # plane_north
+    #   in-plane +y vector
     # indices
-    #   index mapping for data
+    #   index mapping for the data values
     # data
     #   the data
     # bounds
@@ -2180,13 +2184,10 @@ def pixelize_off_axis_spherical(
 
     cdef np.float64_t x_min, x_max, y_min, y_max
     cdef np.float64_t width, height, px_dx, px_dy, ipx_dx, ipx_dy, md
-    cdef int i, j, p, ip, dim
+    cdef int i, j, p, ip
     cdef int lc, lr, rc, rr
-    # These are the temp vars we get from the arrays
-    cdef np.float64_t xsp, ysp, zsp, dxsp, dysp, dzsp, dsp
-    cdef np.float64_t pxsp, pysp, cxpx, cypx, cx, cy, cz
-    cdef np.float64_t xc_i, yc_i, zc_i, dx_i, dy_i, dz_i
-    # Some periodicity helpers
+    cdef np.float64_t dxsp, dysp, dzsp, dsp
+    cdef np.float64_t pxsp, pysp
     cdef np.ndarray[np.int64_t, ndim=2] mask
     cdef np.float64_t xyz_i[3]
     cdef np.float64_t dxyz_i[3]
@@ -2267,6 +2268,7 @@ def pixelize_off_axis_spherical(
                     # make sure pixel value is not a NaN before incrementing it
                     if buff[i,j] != buff[i,j]: buff[i,j] = 0.0
                     buff[i, j] += dsp
+    # is the following chunk-safe? commenting for now...
 #    for i in range(buff.shape[0]):
 #        for j in range(buff.shape[1]):
 #            if mask[i,j] == 0: continue
