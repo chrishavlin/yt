@@ -2132,11 +2132,11 @@ def pixelize_off_axis_spherical(
                        np.float64_t[:,:] buff_theta,
                        np.float64_t[:,:] buff_phi,
                        np.float64_t[:] r,
-                       np.float64_t[:] phi,
                        np.float64_t[:] theta,
+                       np.float64_t[:] phi,
                        np.float64_t[:] dr,
-                       np.float64_t[:] dphi,
                        np.float64_t[:] dtheta,
+                       np.float64_t[:] dphi,
                        np.float64_t[:] plane_c,
                        np.float64_t[:] plane_normal,
                        np.float64_t[:] plane_east,
@@ -2214,52 +2214,48 @@ def pixelize_off_axis_spherical(
     with nogil:
         for ip in range(indices.shape[0]):
             p = indices[ip]
-
+            dsp = data[p]
             # get the cartesian bounding box for this element
-#            _cartesian_bounds_of_spherical_element(r[p],
-#                                    theta[p],
-#                                    phi[p],
-#                                    dr[p],
-#                                    dtheta[p],
-#                                    dphi[p],
-#                                    xyz_i,
-#                                    dxyz_i)
+            _cartesian_bounds_of_spherical_element(r[p],
+                                    theta[p],
+                                    phi[p],
+                                    dr[p],
+                                    dtheta[p],
+                                    dphi[p],
+                                    xyz_i,
+                                    dxyz_i)
 
-#            # project cartesian bounds onto plane
-#            pxsp = 0.0
-#            pysp = 0.0
-#            for idim in range(3):
-#                xyz_i[idim] = xyz_i[idim] - plane_c[idim]
-#                pxsp += xyz_i[idim] * plane_east[idim]
-#                pysp += xyz_i[idim] * plane_north[idim]
-#                #pzsp += xyz_i[i] * plane_normal[i]
-#
-#            dxsp = dxyz_i[0] * 0.5
-#            dysp = dxyz_i[1] * 0.5
-#            dzsp = dxyz_i[2] * 0.5
-#
-#            dsp = data[p]
-#            # Any point we want to plot is at most this far from the center
-#            md = 2.0 * math.sqrt(dxsp*dxsp + dysp*dysp + dzsp*dzsp)
-#            if pxsp + md < x_min or \
-#               pxsp - md > x_max or \
-#               pysp + md < y_min or \
-#               pysp - md > y_max:
-#                continue
-#
-#            # identify pixels that intersect the cartesian bounding box
-#            lc = <int> fmax(((pxsp - md - x_min)*ipx_dx),0)
-#            lr = <int> fmax(((pysp - md - y_min)*ipx_dy),0)
-#            rc = <int> fmin(((pxsp + md - x_min)*ipx_dx + 1), buff.shape[1])
-#            rr = <int> fmin(((pysp + md - y_min)*ipx_dy + 1), buff.shape[0])
-            lr = 0
-            rr = buff_r.shape[0]
-            lc = 0
-            rc = buff_r.shape[1]
+            # project cartesian bounds onto plane
+            pxsp = 0.0
+            pysp = 0.0
+            for idim in range(3):
+                xyz_i[idim] = xyz_i[idim] - plane_c[idim]
+                pxsp += xyz_i[idim] * plane_east[idim]
+                pysp += xyz_i[idim] * plane_north[idim]
+                #pzsp += xyz_i[i] * plane_normal[i]
+
+            dxsp = dxyz_i[0] * 0.5
+            dysp = dxyz_i[1] * 0.5
+            dzsp = dxyz_i[2] * 0.5
+
+            # Any point we want to plot is at most this far from the center
+            md = 2.0 * math.sqrt(dxsp*dxsp + dysp*dysp + dzsp*dzsp)
+            if pxsp + md < x_min or \
+               pxsp - md > x_max or \
+               pysp + md < y_min or \
+               pysp - md > y_max:
+                continue
+
+            # identify pixels that fall within the cartesian bounding box
+            lc = <int> fmax(((pxsp - md - x_min)*ipx_dx),0)
+            lr = <int> fmax(((pysp - md - y_min)*ipx_dy),0)
+            rc = <int> fmin(((pxsp + md - x_min)*ipx_dx + 1), buff.shape[1])
+            rr = <int> fmin(((pysp + md - y_min)*ipx_dy + 1), buff.shape[0])
+
             for i in range(lr, rr):
                 for j in range(lc, rc):
-                    # final check to ensure spherical coords of the pixel
-                    # falls within the spherical volume element
+                    # final check to ensure the actual spherical coords of the
+                    # pixel falls within the spherical volume element
                     if buff_r[i,j] < r[p] - 0.5 * dr[p] or \
                        buff_r[i,j] >= r[p] + 0.5 * dr[p] or \
                        buff_theta[i,j] < theta[p] - 0.5 * dtheta[p] or \

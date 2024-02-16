@@ -1227,9 +1227,10 @@ cdef void _cartesian_bounds_of_spherical_element(np.float64_t r_i,
     # the x-y plane will change depending on the whether theta < or > pi/2,
     # so the following calculates for the min/max theta value of the element
     # and takes the max.
-    # ALSO note, that the phi = 0 or 2pi case is not covered, so this assumes
-    # that elements do not span that periodic boundary... also this will
-    # likely break down for large elements that span whole quadrants...
+    # ALSO note, that the following does check for when an edge aligns with the
+    # phi=0/2pi, it does not handle an element spanning the periodic boundary.
+    # Oh and this may break down for large elements that span whole
+    # quadrants...
     phi_lr =  phi_i - h_dphi
     phi_lr2 = phi_i + h_dphi
     theta_lr = theta_i - h_dtheta

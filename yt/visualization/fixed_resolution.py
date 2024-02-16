@@ -736,8 +736,8 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
         return np.linspace(bmin_i + dx_i, bmax_i + dx_i, buff_size_i)
 
     def image_xy(self):
-        x_plane = self._1d_sample_points(0)
-        y_plane = self._1d_sample_points(1)
+        x_plane = self._1d_sample_points(1)
+        y_plane = self._1d_sample_points(0)
         return x_plane, y_plane
 
     @override
@@ -767,23 +767,30 @@ class MixedCoordSliceFixedResolutionBuffer(FixedResolutionBuffer):
             # for chunk in parallel_objects(data_source.chunks(fields_needed, "io")):
             # indxs = np.argsort(chunk[dpos0])[::-1].astype(np.int_)
             indxs = np.arange(0, chunk[pos0].size)
+            r_ch = chunk[pos0].astype(np.float64)
+            theta_ch = chunk[pos1].astype(np.float64)
+            phi_ch = chunk[pos2].astype(np.float64)
+            dr_ch = chunk[dpos0].astype(np.float64)
+            dtheta_ch = chunk[dpos1].astype(np.float64)
+            dphi_ch = chunk[dpos2].astype(np.float64)
+            data_ch = chunk[item].astype(np.float64)
             msk = pixelize_off_axis_spherical(
                     buff,
                     b_pos0,
                     b_pos1,
                     b_pos2,
-                    chunk[pos0].astype(np.float64),
-                    chunk[pos1].astype(np.float64),
-                    chunk[pos2].astype(np.float64),
-                    chunk[dpos0].astype(np.float64),
-                    chunk[dpos1].astype(np.float64),
-                    chunk[dpos2].astype(np.float64),
+                    r_ch,
+                    theta_ch,
+                    phi_ch,
+                    dr_ch,
+                    dtheta_ch,
+                    dphi_ch,
                     self.data_source.center,
                     self.data_source._norm_vec,
                     self.data_source._x_vec,
                     self.data_source._y_vec,
                     indxs,
-                    chunk[item].astype(np.float64),
+                    data_ch,
                     self.bounds,
                     return_mask=1,
             )
@@ -976,3 +983,124 @@ class ParticleImageBuffer(FixedResolutionBuffer):
         for f in fields:
             if f not in exclude:
                 self.render(f)
+
+def pixelize_off_axis_spherical_temp(
+                       buff,
+                       buff_r,
+                       buff_theta, buff_phi,
+                       r,
+                       theta,
+                       phi,
+                       dr,
+                       dtheta,
+                       dphi,
+                       plane_c,
+                       plane_normal,
+                       plane_east,
+                       plane_north,
+                       indices,
+                       data,
+                       bounds,
+                       return_mask=0,
+
+):
+
+
+
+    x_min = bounds[0]
+    x_max = bounds[1]
+    y_min = bounds[2]
+    y_max = bounds[3]
+    width = x_max - x_min
+    height = y_max - y_min
+    # px_dx = width / buff.shape[1]
+    # px_dy = height / buff.shape[0]
+    # ipx_dx = 1.0 / px_dx
+    # ipx_dy = 1.0 / px_dy
+
+    mask = np.zeros((buff.shape[0], buff.shape[1]), "int64")
+
+    for ip in range(indices.shape[0]):
+        p = indices[ip]
+
+        ## get the cartesian bounding box for this element
+        #    _cartesian_bounds_of_spherical_element(r[p],
+        #                            theta[p],
+        #                            phi[p],
+        #                            dr[p],
+        #                            dtheta[p],
+        #                            dphi[p],
+        #                            xyz_i,
+        #                            dxyz_i)
+        #
+        #    # project cartesian bounds onto plane
+        #    pxsp = 0.0
+        #    pysp = 0.0
+        #    for idim in range(3):
+        #        xyz_i[idim] = xyz_i[idim] - plane_c[idim]
+        #        pxsp += xyz_i[idim] * plane_east[idim]
+        #        pysp += xyz_i[idim] * plane_north[idim]
+        #        #pzsp += xyz_i[i] * plane_normal[i]
+        #
+        #    dxsp = dxyz_i[0] * 0.5
+        #    dysp = dxyz_i[1] * 0.5
+        #    dzsp = dxyz_i[2] * 0.5
+
+        dsp = data[p]
+        # # Any point we want to plot is at most this far from the center
+        # md = 2.0 * math.sqrt(dxsp*dxsp + dysp*dysp + dzsp*dzsp)
+        # if pxsp + md < x_min or \
+        #    pxsp - md > x_max or \
+        #    pysp + md < y_min or \
+        #    pysp - md > y_max:
+        #     continue
+        #
+        # # identify pixels that intersect the cartesian bounding box
+        # lc = <int> fmax(((pxsp - md - x_min)*ipx_dx),0)
+        # lr = <int> fmax(((pysp - md - y_min)*ipx_dy),0)
+        # rc = <int> fmin(((pxsp + md - x_min)*ipx_dx + 1), buff.shape[1])
+        # rr = <int> fmin(((pysp + md - y_min)*ipx_dy + 1), buff.shape[0])
+        lr = 0
+        rr = buff_r.shape[0]
+        lc = 0
+        rc = buff_r.shape[1]
+        rmin = r[p] - 0.5 * dr[p]
+        rmax = r[p] + 0.5 * dr[p]
+        thetamin = theta[p] - 0.5 * dtheta[p]
+        thetamax = theta[p] + 0.5 * dtheta[p]
+        phimin = phi[p] - 0.5 * dphi[p]
+        phimax = phi[p] + 0.5 * dphi[p]
+        # mask = np.zeros((buff.shape[0], buff.shape[1]), "int64")
+
+        for i in range(lr, rr):
+            for j in range(lc, rc):
+                # final check to ensure spherical coords of the pixel
+                # falls within the spherical volume element
+
+
+                rval = buff_r[i,j]
+                if rval < rmin or rval >= rmax:
+                    continue
+                thetaval = buff_theta[i, j]
+                if thetaval < thetamin or thetaval >= thetamax:
+                    continue
+                phival = buff_phi[i, j]
+                if phival < phimin or phival >= phimax:
+                    continue
+                #
+                # if buff_r[i,j] < r[p] - 0.5 * dr[p] or \
+                #    buff_r[i,j] >= r[p] + 0.5 * dr[p] or \
+                #    buff_theta[i,j] < theta[p] - 0.5 * dtheta[p] or \
+                #    buff_theta[i,j] >= theta[p] + 0.5 * dtheta[p] or \
+                #    buff_phi[i,j] <  or \
+                #    buff_phi[i,j] >= :
+                #    continue
+                mask[i, j] += 1
+                # make sure pixel value is not a NaN before incrementing it
+                if buff[i,j] != buff[i,j]:
+                    buff[i,j] = 0.0
+                buff[i, j] += dsp
+
+
+    if return_mask:
+        return mask!=0
