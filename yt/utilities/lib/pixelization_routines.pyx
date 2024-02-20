@@ -48,7 +48,7 @@ from yt.utilities.lib.element_mappings cimport (
     Tet2Sampler3D,
     W1Sampler3D,
 )
-from yt.utilities.lib.misc_utilities cimport _cartesian_bounds_of_spherical_element
+from yt.utilities.lib.coordinate_utilities cimport MixedCoordBBox
 
 from .vec3_ops cimport cross, dot, subtract
 
@@ -2126,17 +2126,18 @@ def sample_arbitrary_points_in_1d_buffer(
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def pixelize_off_axis_spherical(
+def pixelize_off_axis_mixed_coords(
+                       MixedCoordBBox bbox_handler,
                        np.float64_t[:,:] buff,
-                       np.float64_t[:,:] buff_r,
-                       np.float64_t[:,:] buff_theta,
-                       np.float64_t[:,:] buff_phi,
-                       np.float64_t[:] r,
-                       np.float64_t[:] theta,
-                       np.float64_t[:] phi,
-                       np.float64_t[:] dr,
-                       np.float64_t[:] dtheta,
-                       np.float64_t[:] dphi,
+                       np.float64_t[:,:] buff_pos0,
+                       np.float64_t[:,:] buff_pos1,
+                       np.float64_t[:,:] buff_pos2,
+                       np.float64_t[:] pos0,
+                       np.float64_t[:] pos1,
+                       np.float64_t[:] pos2,
+                       np.float64_t[:] dpos0,
+                       np.float64_t[:] dpos1,
+                       np.float64_t[:] dpos2,
                        np.float64_t[:] plane_c,
                        np.float64_t[:] plane_normal,
                        np.float64_t[:] plane_east,
@@ -2148,16 +2149,16 @@ def pixelize_off_axis_spherical(
                        int return_mask=0,
 ):
 
-    # pixelize a cartesian image plane passing through a spherical geometry.
+    # pixelize a cartesian image plane passing through a non-cartesian geometry.
     #
     # buff
     #   image buffer 2d array
-    # buff_r, buff_theta, buff_phi
-    #   spherical coordinates of image pixels, 2d arrays
-    # r, phi, theta
-    #   data coordinates in spherical coordinates
-    # dr, dphi, dtheta
-    #   element widths in spherical coordinates
+    # buff_pos0, buff_pos1, buff_pos2
+    #   native coordinates of image pixels, 2d arrays
+    # pos0, pos1, pos2
+    #   data coordinates in native coordinates
+    # dpos0, dphi, dpos2
+    #   element widths in native coordinates
     # plane_c
     #   the cartesian coordinates of the plane center point
     # plane_normal
@@ -2202,12 +2203,12 @@ def pixelize_off_axis_spherical(
     px_dy = height / (<np.float64_t> buff.shape[0])
     ipx_dx = 1.0 / px_dx
     ipx_dy = 1.0 / px_dy
-    if r.shape[0] != data.shape[0] or \
-       phi.shape[0] != data.shape[0] or \
-       theta.shape[0] != data.shape[0] or \
-       dr.shape[0] != data.shape[0] or \
-       dphi.shape[0] != data.shape[0] or \
-       dtheta.shape[0] != data.shape[0] or \
+    if pos0.shape[0] != data.shape[0] or \
+       pos1.shape[0] != data.shape[0] or \
+       pos2.shape[0] != data.shape[0] or \
+       dpos0.shape[0] != data.shape[0] or \
+       dpos2.shape[0] != data.shape[0] or \
+       dpos2.shape[0] != data.shape[0] or \
        indices.shape[0] != data.shape[0] :
         raise YTPixelizeError("Arrays are not of correct shape.")
     mask = np.zeros((buff.shape[0], buff.shape[1]), "int64")
@@ -2217,14 +2218,14 @@ def pixelize_off_axis_spherical(
             p = indices[ip]
             dsp = data[p]
             # get the cartesian bounding box for this element
-            _cartesian_bounds_of_spherical_element(r[p],
-                                    theta[p],
-                                    phi[p],
-                                    dr[p],
-                                    dtheta[p],
-                                    dphi[p],
-                                    xyz_i,
-                                    dxyz_i)
+            bbox_handler.get_cartesian_bbox(pos0[p],
+                                            pos1[p],
+                                            pos2[p],
+                                            dpos0[p],
+                                            dpos1[p],
+                                            dpos2[p],
+                                            xyz_i,
+                                            dxyz_i)
 
             # project cartesian bounds onto plane
             pxsp = 0.0
@@ -2257,12 +2258,12 @@ def pixelize_off_axis_spherical(
                 for j in range(lc, rc):
                     # final check to ensure the actual spherical coords of the
                     # pixel falls within the spherical volume element
-                    if buff_r[i,j] < r[p] - 0.5 * dr[p] or \
-                       buff_r[i,j] >= r[p] + 0.5 * dr[p] or \
-                       buff_theta[i,j] < theta[p] - 0.5 * dtheta[p] or \
-                       buff_theta[i,j] >= theta[p] + 0.5 * dtheta[p] or \
-                       buff_phi[i,j] < phi[p] - 0.5 * dphi[p] or \
-                       buff_phi[i,j] >= phi[p] + 0.5 * dphi[p]:
+                    if buff_pos0[i,j] < pos0[p] - 0.5 * dpos0[p] or \
+                       buff_pos0[i,j] >= pos0[p] + 0.5 * dpos0[p] or \
+                       buff_pos1[i,j] < pos1[p] - 0.5 * dpos1[p] or \
+                       buff_pos1[i,j] >= pos1[p] + 0.5 * dpos1[p] or \
+                       buff_pos2[i,j] < pos2[p] - 0.5 * dpos2[p] or \
+                       buff_pos2[i,j] >= pos2[p] + 0.5 * dpos2[p]:
                        continue
                     mask[i, j] += 1
                     # make sure pixel value is not a NaN before incrementing it

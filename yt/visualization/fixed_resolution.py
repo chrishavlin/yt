@@ -10,6 +10,7 @@ from yt._typing import FieldKey, MaskT
 from yt.data_objects.image_array import ImageArray
 from yt.frontends.ytdata.utilities import save_as_dataset
 from yt.funcs import get_output_filename, iter_fields, mylog
+from yt.geometry.geometry_enum import Geometry
 from yt.loaders import load_uniform_grid
 from yt.utilities.lib.api import (  # type: ignore
     CICDeposit_2,
@@ -17,7 +18,7 @@ from yt.utilities.lib.api import (  # type: ignore
 )
 from yt.utilities.lib.pixelization_routines import (
     pixelize_cylinder,
-    pixelize_off_axis_spherical,
+    pixelize_off_axis_mixed_coords,
     rotate_particle_coord,
 )
 from yt.utilities.math_utils import compute_stddev_image
@@ -695,11 +696,12 @@ class OffAxisProjectionFixedResolutionBuffer(FixedResolutionBuffer):
         self.mask[item] = None
 
 
-class SphericalFixedResolutionBuffer(FixedResolutionBuffer):
+class MixedCoordFixedResolutionBuffer(FixedResolutionBuffer):
     """
     This object is a subclass of
     :class:`yt.visualization.fixed_resolution.FixedResolutionBuffer`
-    that supports off axis (cartesian) slices through a 3D spherical domain
+    that supports off axis (cartesian) slices through a 3D domain
+    defined in non-cartesian coordiantes
     """
 
     def __init__(
@@ -725,6 +727,21 @@ class SphericalFixedResolutionBuffer(FixedResolutionBuffer):
             periodic=periodic,
             filters=filters,
         )
+        self._ds_geom = self.data_source._ds_geom
+
+    @property
+    def _bbox_handler(self):
+        from yt.utilities.lib.coordinate_utilities import (
+            CartesianMixedCoordBBox,
+            SphericalMixedCoordBBox,
+        )
+
+        if self._ds_geom is Geometry.SPHERICAL:
+            return SphericalMixedCoordBBox()
+        elif self._ds_geom is Geometry.CARTESIAN:
+            return CartesianMixedCoordBBox()
+        else:
+            self._raise_unsupported_geometry()
 
     def _1d_sample_points(self, axisid: int):
         # get a 1d array of sample points along a dimension
@@ -761,13 +778,15 @@ class SphericalFixedResolutionBuffer(FixedResolutionBuffer):
         fields_needed = data_source._index_fields + [
             item,
         ]
+        bbox_handler = self._bbox_handler
 
         for chunk in data_source.chunks(fields_needed, "io"):
             # for chunk in parallel_objects(data_source.chunks(fields_needed, "io")):
             # indxs = np.argsort(chunk[dpos0])[::-1].astype(np.int_)
             indxs = np.arange(0, chunk[pos0].size)
             data_ch = chunk[item].astype(np.float64)  # handle units!
-            msk = pixelize_off_axis_spherical(
+            msk = pixelize_off_axis_mixed_coords(
+                bbox_handler,
                 buff,
                 b_pos0,
                 b_pos1,

@@ -457,8 +457,12 @@ class YTCuttingPlaneMixedCoords(YTCuttingPlane):
 
     @property
     def _index_fields(self):
-        fields = [("index", fld) for fld in self.ds.coordinates.axis_order]
-        fields += [("index", f"d{fld}") for fld in self.ds.coordinates.axis_order]
+        # note: using the default axis order here because the index fields
+        # will are accessed by-chunk and passed down to the pixelizer
+        # with an expected ordering matching the default ordering.
+        ax_order = self.ds.coordinates._default_axis_order
+        fields = [("index", fld) for fld in ax_order]
+        fields += [("index", f"d{fld}") for fld in ax_order]
         return fields
 
     @property
@@ -480,15 +484,10 @@ class YTCuttingPlaneMixedCoords(YTCuttingPlane):
     @property
     def _frb_class(self):
         from yt.visualization.fixed_resolution import (
-            FixedResolutionBuffer,
-            SphericalFixedResolutionBuffer,
+            MixedCoordFixedResolutionBuffer,
         )
 
-        if self._ds_geom is Geometry.SPHERICAL:
-            return SphericalFixedResolutionBuffer
-        elif self._ds_geom is Geometry.CARTESIAN:
-            return FixedResolutionBuffer
-        self._raise_unsupported_geometry()
+        return MixedCoordFixedResolutionBuffer
 
     def _plane_coords(self, in_plane_x, in_plane_y):
         # calculates the 3d coordinates of points on a plane in the
