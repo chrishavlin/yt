@@ -285,11 +285,6 @@ class YTCuttingPlane(YTSelectionContainer2D):
         else:
             raise KeyError(field)
 
-    @property
-    def _frb_class(self):
-        from yt.visualization.fixed_resolution import FixedResolutionBuffer
-
-        return FixedResolutionBuffer
 
     def to_pw(self, fields=None, center="center", width=None, axes_unit=None):
         r"""Create a :class:`~yt.visualization.plot_window.PWViewerMPL` from this
@@ -299,7 +294,9 @@ class YTCuttingPlane(YTSelectionContainer2D):
         object, which can then be moved around, zoomed, and on and on.  All
         behavior of the plot window is relegated to that routine.
         """
+        from yt.visualization.fixed_resolution import FixedResolutionBuffer
 
+        return FixedResolutionBuffer
         normal = self.normal
         center = self.center
         self.fields = list(iter_fields(fields)) + [
@@ -320,7 +317,7 @@ class YTCuttingPlane(YTSelectionContainer2D):
             origin="center-window",
             periodic=False,
             oblique=True,
-            frb_generator=self._frb_class,
+            frb_generator=FixedResolutionBuffer,
             plot_type="OffAxisSlice",
         )
         if axes_unit is not None:
@@ -369,6 +366,10 @@ class YTCuttingPlane(YTSelectionContainer2D):
         >>> frb = cutting.to_frb((1.0, "pc"), 1024)
         >>> write_image(np.log10(frb[("gas", "density")]), "density_1pc.png")
         """
+        from yt.visualization.fixed_resolution import FixedResolutionBuffer
+
+        return FixedResolutionBuffer
+
         if is_sequence(width):
             validate_width_tuple(width)
             width = self.ds.quan(width[0], width[1])
@@ -381,7 +382,7 @@ class YTCuttingPlane(YTSelectionContainer2D):
             resolution = (resolution, resolution)
 
         bounds = (-width / 2.0, width / 2.0, -height / 2.0, height / 2.0)
-        return self._frb_class(self, bounds, resolution, periodic=periodic)
+        return FixedResolutionBuffer(self, bounds, resolution, periodic=periodic)
 
 
 def _cartesian_passthrough(x, y, z):
@@ -481,13 +482,6 @@ class YTCuttingPlaneMixedCoords(YTCuttingPlane):
             return _cartesian_passthrough
         self._raise_unsupported_geometry()
 
-    @property
-    def _frb_class(self):
-        from yt.visualization.fixed_resolution import (
-            MixedCoordFixedResolutionBuffer,
-        )
-
-        return MixedCoordFixedResolutionBuffer
 
     def _plane_coords(self, in_plane_x, in_plane_y):
         # calculates the 3d coordinates of points on a plane in the
@@ -501,7 +495,7 @@ class YTCuttingPlaneMixedCoords(YTCuttingPlane):
 
         return self._cartesian_to_native(x_global, y_global, z_global)
 
-    def to_pw(self):
+    def to_pw(self, fields=None, center="center", width=None, axes_unit=None):
         msg = (
             "to_pw is not implemented for mixed coordinate slices. You can create"
             " plots manually using to_frb() to generate a fixed resolution array."
