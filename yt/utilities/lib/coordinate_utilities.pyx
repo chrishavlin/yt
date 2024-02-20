@@ -12,44 +12,45 @@ from yt.utilities.lib.fp_utils cimport fmax, fmin
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def cartesian_bboxes_for_spherical(np.float64_t[:] r,
-                                      np.float64_t[:] theta,
-                                      np.float64_t[:] phi,
-                                      np.float64_t[:] dr,
-                                      np.float64_t[:] dtheta,
-                                      np.float64_t[:] dphi,
-                                      np.float64_t[:] x,
-                                      np.float64_t[:] y,
-                                      np.float64_t[:] z,
-                                      np.float64_t[:] dx,
-                                      np.float64_t[:] dy,
-                                      np.float64_t[:] dz,
+def cartesian_bboxes(MixedCoordBBox bbox_handler,
+                      np.float64_t[:] pos0,
+                      np.float64_t[:] pos1,
+                      np.float64_t[:] pos2,
+                      np.float64_t[:] dpos0,
+                      np.float64_t[:] dpos1,
+                      np.float64_t[:] dpos2,
+                      np.float64_t[:] x,
+                      np.float64_t[:] y,
+                      np.float64_t[:] z,
+                      np.float64_t[:] dx,
+                      np.float64_t[:] dy,
+                      np.float64_t[:] dz,
                                       ):
-    # calculates the cartesian bounding boxes around spherical volume elements
+    # calculates the cartesian bounding boxes around non-cartesian
+    # volume elements
     #
-    # r, theta, phi : spherical coordinates of element centers
-    # dr, dtheta, dphi : element widths in spherical coordinates
+    # bbox_handler : a MixedCoordBBox child instance
+    # pos0, pos1, pos2: native coordinates of element centers
+    # dpos0, dpos1, dpos2: element widths in native coordinates
     # x, y, z: cartesian centers of bounding boxes, modified in place
-    # dx, dy, dz : cartesian widths of bounding boxes, modified in place
+    # dx, dy, dz : full-widths of the cartesian bounding boxes, modified in place
 
-    cdef int i, n_r
+    cdef int i, n_pos
     cdef np.float64_t xyz_i[3]
     cdef np.float64_t dxyz_i[3]
 
-    cdef SphericalMixedCoordBBox bbox_handler = SphericalMixedCoordBBox()
-
-    n_r = r.size
+    n_pos = pos0.size
     with nogil:
-        for i in range(n_r):
+        for i in range(n_pos):
 
-            bbox_handler.get_cartesian_bbox(r[i],
-                                                theta[i],
-                                                phi[i],
-                                                dr[i],
-                                                dtheta[i],
-                                                dphi[i],
-                                                xyz_i,
-                                                dxyz_i)
+            bbox_handler.get_cartesian_bbox(pos0[i],
+                                            pos1[i],
+                                            pos2[i],
+                                            dpos0[i],
+                                            dpos1[i],
+                                            dpos2[i],
+                                            xyz_i,
+                                            dxyz_i)
 
             x[i] = xyz_i[0]
             y[i] = xyz_i[1]
