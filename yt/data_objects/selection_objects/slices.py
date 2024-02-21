@@ -285,7 +285,6 @@ class YTCuttingPlane(YTSelectionContainer2D):
         else:
             raise KeyError(field)
 
-
     def to_pw(self, fields=None, center="center", width=None, axes_unit=None):
         r"""Create a :class:`~yt.visualization.plot_window.PWViewerMPL` from this
         object.
@@ -294,14 +293,12 @@ class YTCuttingPlane(YTSelectionContainer2D):
         object, which can then be moved around, zoomed, and on and on.  All
         behavior of the plot window is relegated to that routine.
         """
-        from yt.visualization.fixed_resolution import FixedResolutionBuffer
-
-        return FixedResolutionBuffer
         normal = self.normal
         center = self.center
         self.fields = list(iter_fields(fields)) + [
             k for k in self.field_data.keys() if k not in self._key_fields
         ]
+        from yt.visualization.fixed_resolution import FixedResolutionBuffer
         from yt.visualization.plot_window import (
             PWViewerMPL,
             get_oblique_window_parameters,
@@ -366,9 +363,6 @@ class YTCuttingPlane(YTSelectionContainer2D):
         >>> frb = cutting.to_frb((1.0, "pc"), 1024)
         >>> write_image(np.log10(frb[("gas", "density")]), "density_1pc.png")
         """
-        from yt.visualization.fixed_resolution import FixedResolutionBuffer
-
-        return FixedResolutionBuffer
 
         if is_sequence(width):
             validate_width_tuple(width)
@@ -381,8 +375,11 @@ class YTCuttingPlane(YTSelectionContainer2D):
         if not is_sequence(resolution):
             resolution = (resolution, resolution)
 
+        from yt.visualization.fixed_resolution import FixedResolutionBuffer
+
         bounds = (-width / 2.0, width / 2.0, -height / 2.0, height / 2.0)
-        return FixedResolutionBuffer(self, bounds, resolution, periodic=periodic)
+        frb = FixedResolutionBuffer(self, bounds, resolution, periodic=periodic)
+        return frb
 
 
 def _cartesian_passthrough(x, y, z):
@@ -390,20 +387,37 @@ def _cartesian_passthrough(x, y, z):
 
 
 def _spherical_to_cartesian(r, theta, phi):
-    z = r * np.cos(theta)
-    x = r * np.sin(theta) * np.cos(phi)
-    y = r * np.sin(theta) * np.sin(phi)
-    return x, y, z
+
+    from yt.utilities.lib.coordinate_utilities import spherical_points_to_cartesian
+
+    orig_shape = None
+    if r.ndim > 1:
+        orig_shape = r.shape
+        r = r.ravel()
+        theta = theta.ravel()
+        phi = phi.ravel()
+
+    xyz = spherical_points_to_cartesian(r, theta, phi)
+    if orig_shape is not None:
+        xyz = [xyz_i.reshape(orig_shape) for xyz_i in xyz]
+    return xyz
 
 
 def _cartesian_to_spherical(x, y, z):
-    # get spherical coords of points in plane
-    r = np.sqrt(x.d**2 + y.d**2 + z.d**2)
-    theta = np.arccos(z / (r + 1e-8))  # 0 to pi angle
-    phi = np.arctan2(y, x)  # 0 to 2pi angle
-    # arctan2 returns -pi to pi
-    phi[phi < 0] = phi[phi < 0] + 2 * np.pi
-    return r, theta, phi
+
+    from yt.utilities.lib.coordinate_utilities import cartesian_points_to_spherical
+
+    orig_shape = None
+    if x.ndim > 1:
+        orig_shape = x.shape
+        x = x.ravel()
+        y = y.ravel()
+        z = z.ravel()
+
+    rthphi = cartesian_points_to_spherical(x, y, z)
+    if orig_shape is not None:
+        rthphi = [rthphi_i.reshape(orig_shape) for rthphi_i in rthphi]
+    return rthphi
 
 
 class YTCuttingPlaneMixedCoords(YTCuttingPlane):
@@ -481,7 +495,6 @@ class YTCuttingPlaneMixedCoords(YTCuttingPlane):
         elif self._ds_geom is Geometry.CARTESIAN:
             return _cartesian_passthrough
         self._raise_unsupported_geometry()
-
 
     def _plane_coords(self, in_plane_x, in_plane_y):
         # calculates the 3d coordinates of points on a plane in the

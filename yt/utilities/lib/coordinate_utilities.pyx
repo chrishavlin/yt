@@ -1,12 +1,100 @@
 cimport cython
+import numpy as np
 cimport numpy as np
 
-from libc.math cimport cos, sin
+from libc.math cimport cos, sin, atan2, acos, sqrt
 
 from numpy.math cimport PI as NPY_PI
 from numpy.math cimport INFINITY as NPY_INF
 
 from yt.utilities.lib.fp_utils cimport fmax, fmin
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef (np.float64_t, np.float64_t, np.float64_t) spherical_to_cartesian(np.float64_t r,
+                           np.float64_t theta,
+                           np.float64_t phi) noexcept nogil:
+        # transform a single point in spherical coords to cartesian
+        # r : radius
+        # theta: colatitude
+        # phi: azimuthal (longitudinal) angle
+        cdef np.float64_t x, y, xy, z
+
+        if r == 0.0:
+            return 0.0, 0.0, 0.0
+
+        xy = r * sin(theta)
+        x = xy * cos(phi)
+        y = xy * sin(phi)
+        z = r * cos(theta)
+        return x, y, z
+
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef (np.float64_t, np.float64_t, np.float64_t) cartesian_to_spherical(np.float64_t x,
+                           np.float64_t y,
+                           np.float64_t z) noexcept nogil:
+        # transform a single point in cartesian coords to spherical, returns
+        # r : radius
+        # theta: colatitude
+        # phi: azimuthal angle in range (0, 2pi)
+        cdef np.float64_t r, theta, phi
+        r = sqrt(x*x + y*y + z*z)
+        theta = acos(z / r)
+        phi = atan2(y, x)
+        # atan2 returns -pi to pi, adjust to (0, 2pi)
+        if phi < 0:
+            phi = phi + 2 * NPY_PI
+        return r, theta, phi
+
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def cartesian_points_to_spherical(np.float64_t[:] x,
+                                  np.float64_t[:] y,
+                                  np.float64_t[:] z):
+        # transform an array of points in cartesian coords to spherical, returns
+        # r : radius
+        # theta: colatitude
+        # phi: azimuthal angle in range (0, 2pi)
+        cdef np.ndarray[np.float64_t, ndim=1] r, theta, phi
+        cdef int i, n_x
+
+        r = np.zeros(x.shape[0], dtype='float64')
+        theta = np.zeros(x.shape[0], dtype='float64')
+        phi = np.zeros(x.shape[0], dtype='float64')
+        n_x = x.size
+        with nogil:
+            for i in range(n_x):
+                r[i], theta[i], phi[i] = cartesian_to_spherical(x[i], y[i], z[i])
+
+        return r, theta, phi
+
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def spherical_points_to_cartesian(np.float64_t[:] r,
+                                 np.float64_t[:] theta,
+                                  np.float64_t[:] phi):
+        # transform an array of points in spherical coords to cartesian
+        cdef np.ndarray[np.float64_t, ndim=1] x, y, z
+        cdef int i, n_r
+
+        x = np.zeros(r.shape[0], dtype='float64')
+        y = np.zeros(r.shape[0], dtype='float64')
+        z = np.zeros(r.shape[0], dtype='float64')
+        n_r = r.size
+
+        with nogil:
+            for i in range(n_r):
+                x[i], y[i], z[i] = spherical_to_cartesian(r[i], theta[i], phi[i])
+
+        return x, y, z
 
 
 @cython.cdivision(True)
@@ -61,6 +149,8 @@ def cartesian_bboxes(MixedCoordBBox bbox_handler,
 
 
 cdef class MixedCoordBBox:
+    # abstract class for calculating cartesian bounding boxes
+    # from non-cartesian grid elements.
     cdef void get_cartesian_bbox(self,
                                 np.float64_t pos0,
                                 np.float64_t pos1,
@@ -75,6 +165,7 @@ cdef class MixedCoordBBox:
 
 
 cdef class SphericalMixedCoordBBox(MixedCoordBBox):
+    # Cartesian bounding boxes of spherical grid elements
     cdef void get_cartesian_bbox(self,
                         np.float64_t pos0,
                         np.float64_t pos1,
@@ -127,9 +218,7 @@ cdef class SphericalMixedCoordBBox(MixedCoordBBox):
                     theta_lr = theta_i + sign_th * h_dtheta
                     phi_lr = phi_i + sign_ph * h_dphi
 
-                    xi = r_lr * sin(theta_lr) * cos(phi_lr)
-                    yi = r_lr * sin(theta_lr) * sin(phi_lr)
-                    zi = r_lr * cos(theta_lr)
+                    xi, yi, zi = spherical_to_cartesian(r_lr, theta_lr, phi_lr)
 
                     xli = fmin(xli, xi)
                     yli = fmin(yli, yi)
@@ -182,7 +271,8 @@ cdef class SphericalMixedCoordBBox(MixedCoordBBox):
 
 
 cdef class CartesianMixedCoordBBox(MixedCoordBBox):
-    # pass-through class useful for testing
+    # Cartesian bounding boxes... of cartesian elements. Only useful
+    # for testing.
     cdef void get_cartesian_bbox(
                         self,
                         np.float64_t pos0,

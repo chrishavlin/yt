@@ -4,6 +4,8 @@ from yt.utilities.lib.coordinate_utilities import (
     CartesianMixedCoordBBox,
     SphericalMixedCoordBBox,
     cartesian_bboxes,
+    cartesian_points_to_spherical,
+    spherical_points_to_cartesian,
 )
 
 
@@ -163,3 +165,18 @@ def test_cartesian_passthrough():
     for idim in range(3):
         assert np.all(xyz_in[idim] == xyz_out[idim])
         assert np.all(dxyz_in[idim] == dxyz_out[idim])
+
+
+def test_spherical_cartesian_roundtrip():
+    xyz = [np.linspace(0, 1, 10) for _ in range(3)]
+    xyz = np.meshgrid(*xyz)
+    xyz = [xyzi.ravel() for xyzi in xyz]
+    x, y, z = xyz
+
+    r, theta, phi = cartesian_points_to_spherical(x, y, z)
+    x_out, y_out, z_out = spherical_points_to_cartesian(r, theta, phi)
+
+    assert np.allclose(x_out, x)
+    assert np.allclose(y_out, y)
+    assert np.allclose(z_out, z)
+    assert np.max(r) == np.sqrt(3.0)
