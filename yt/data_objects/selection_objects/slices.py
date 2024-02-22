@@ -386,18 +386,22 @@ def _cartesian_passthrough(x, y, z):
     return x, y, z
 
 
+def _get1d_views(x1, x2, x3):
+    assert x1.shape == x2.shape == x3.shape
+    if x1.ndim == 1:
+        return None, x1, x2, x3
+    elif x1.ndim > 1:
+        return x1.shape, x1.reshape(-1), x2.reshape(-1), x3.reshape(-1)
+    else:
+        raise RuntimeError("array shapes must be at least 1d.")
+
+
 def _spherical_to_cartesian(r, theta, phi):
 
     from yt.utilities.lib.coordinate_utilities import spherical_points_to_cartesian
 
-    orig_shape = None
-    if r.ndim > 1:
-        orig_shape = r.shape
-        r = r.ravel()
-        theta = theta.ravel()
-        phi = phi.ravel()
-
-    xyz = spherical_points_to_cartesian(r, theta, phi)
+    orig_shape, r1d, theta1d, phi1d = _get1d_views(r, theta, phi)
+    xyz = spherical_points_to_cartesian(r1d, theta1d, phi1d)
     if orig_shape is not None:
         xyz = [xyz_i.reshape(orig_shape) for xyz_i in xyz]
     return xyz
@@ -407,14 +411,8 @@ def _cartesian_to_spherical(x, y, z):
 
     from yt.utilities.lib.coordinate_utilities import cartesian_points_to_spherical
 
-    orig_shape = None
-    if x.ndim > 1:
-        orig_shape = x.shape
-        x = x.ravel()
-        y = y.ravel()
-        z = z.ravel()
-
-    rthphi = cartesian_points_to_spherical(x, y, z)
+    orig_shape, x1d, y1d, z1d = _get1d_views(x, y, z)
+    rthphi = cartesian_points_to_spherical(x1d, y1d, z1d)
     if orig_shape is not None:
         rthphi = [rthphi_i.reshape(orig_shape) for rthphi_i in rthphi]
     return rthphi

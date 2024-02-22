@@ -2186,7 +2186,7 @@ def pixelize_off_axis_mixed_coords(
     cdef np.float64_t x_min, x_max, y_min, y_max
     cdef np.float64_t width, height, px_dx, px_dy, ipx_dx, ipx_dy, md
     cdef int i, j, p, ip
-    cdef int lc, lr, rc, rr
+    cdef int x_ind_l, x_ind_r, y_ind_l, y_ind_r
     cdef np.float64_t dxsp, dysp, dzsp, dsp
     cdef np.float64_t pxsp, pysp
     cdef np.ndarray[np.int64_t, ndim=2] mask
@@ -2199,8 +2199,8 @@ def pixelize_off_axis_mixed_coords(
     y_max = bounds[3]
     width = x_max - x_min
     height = y_max - y_min
-    px_dx = width / (<np.float64_t> buff.shape[1])
-    px_dy = height / (<np.float64_t> buff.shape[0])
+    px_dx = width / (<np.float64_t> buff.shape[0])
+    px_dy = height / (<np.float64_t> buff.shape[1])
     ipx_dx = 1.0 / px_dx
     ipx_dy = 1.0 / px_dy
     if pos0.shape[0] != data.shape[0] or \
@@ -2249,13 +2249,13 @@ def pixelize_off_axis_mixed_coords(
                 continue
 
             # identify pixels that fall within the cartesian bounding box
-            lc = <int> fmax(((pxsp - md - x_min)*ipx_dx),0)
-            lr = <int> fmax(((pysp - md - y_min)*ipx_dy),0)
-            rc = <int> fmin(((pxsp + md - x_min)*ipx_dx + 1), buff.shape[1])
-            rr = <int> fmin(((pysp + md - y_min)*ipx_dy + 1), buff.shape[0])
+            x_ind_l = <int> fmax(((pxsp - md - x_min)*ipx_dx),0)
+            x_ind_r = <int> fmin(((pxsp + md - x_min)*ipx_dx + 1), buff.shape[0])
+            y_ind_l = <int> fmax(((pysp - md - y_min)*ipx_dy),0)
+            y_ind_r = <int> fmin(((pysp + md - y_min)*ipx_dy + 1), buff.shape[1])
 
-            for i in range(lr, rr):
-                for j in range(lc, rc):
+            for i in range(x_ind_l, x_ind_r):
+                for j in range(y_ind_l, y_ind_r):
                     # final check to ensure the actual spherical coords of the
                     # pixel falls within the spherical volume element
                     if buff_pos0[i,j] < pos0[p] - 0.5 * dpos0[p] or \
@@ -2269,11 +2269,11 @@ def pixelize_off_axis_mixed_coords(
                     # make sure pixel value is not a NaN before incrementing it
                     if buff[i,j] != buff[i,j]: buff[i,j] = 0.0
                     buff[i, j] += dsp
-    # is the following chunk-safe? commenting for now...
-#    for i in range(buff.shape[0]):
-#        for j in range(buff.shape[1]):
-#            if mask[i,j] == 0: continue
-#            buff[i,j] /= mask[i,j]
+
+    for i in range(buff.shape[0]):
+        for j in range(buff.shape[1]):
+            if mask[i,j] == 0: continue
+            buff[i,j] /= mask[i,j]
 
     if return_mask:
         return mask!=0
