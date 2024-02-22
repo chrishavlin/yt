@@ -2157,7 +2157,7 @@ def pixelize_off_axis_mixed_coords(
     #   native coordinates of image pixels, 2d arrays
     # pos0, pos1, pos2
     #   data coordinates in native coordinates
-    # dpos0, dphi, dpos2
+    # dpos0, dpos1, dpos2
     #   element widths in native coordinates
     # plane_c
     #   the cartesian coordinates of the plane center point
@@ -2259,11 +2259,11 @@ def pixelize_off_axis_mixed_coords(
                     # final check to ensure the actual spherical coords of the
                     # pixel falls within the spherical volume element
                     if buff_pos0[i,j] < pos0[p] - 0.5 * dpos0[p] or \
-                       buff_pos0[i,j] >= pos0[p] + 0.5 * dpos0[p] or \
+                       buff_pos0[i,j] > pos0[p] + 0.5 * dpos0[p] or \
                        buff_pos1[i,j] < pos1[p] - 0.5 * dpos1[p] or \
-                       buff_pos1[i,j] >= pos1[p] + 0.5 * dpos1[p] or \
+                       buff_pos1[i,j] > pos1[p] + 0.5 * dpos1[p] or \
                        buff_pos2[i,j] < pos2[p] - 0.5 * dpos2[p] or \
-                       buff_pos2[i,j] >= pos2[p] + 0.5 * dpos2[p]:
+                       buff_pos2[i,j] > pos2[p] + 0.5 * dpos2[p]:
                        continue
                     mask[i, j] += 1
                     # make sure pixel value is not a NaN before incrementing it
