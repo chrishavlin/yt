@@ -382,10 +382,6 @@ class YTCuttingPlane(YTSelectionContainer2D):
         return frb
 
 
-def _cartesian_passthrough(x, y, z):
-    return x, y, z
-
-
 def _get1d_views(x1, x2, x3):
     assert x1.shape == x2.shape == x3.shape
     if x1.ndim == 1:
@@ -432,7 +428,7 @@ class YTCuttingPlaneMixedCoords(YTCuttingPlane):
     _tds_attrs = ("_inv_mat",)
     _tds_fields = ("x", "y", "z", "dx")
     _container_fields = ("px", "py", "pz", "pdx", "pdy", "pdz")
-    _supported_geometries = (Geometry.SPHERICAL, Geometry.CARTESIAN)
+    _supported_geometries = (Geometry.SPHERICAL,)
 
     def __init__(
         self,
@@ -458,7 +454,14 @@ class YTCuttingPlaneMixedCoords(YTCuttingPlane):
 
     def _validate_geometry(self):
         if self._ds_geom not in self._supported_geometries:
-            self._raise_unsupported_geometry()
+            if self._ds_geom is Geometry.CARTESIAN:
+                msg = (
+                    "YTCuttingPlaneMixedCoords is not supported for cartesian "
+                    "coordinates: use YTCuttingPlane instead (i.e., ds.cutting)."
+                )
+                raise NotImplementedError(msg)
+            else:
+                self._raise_unsupported_geometry()
 
     def _raise_unsupported_geometry(self):
         msg = (
@@ -482,16 +485,12 @@ class YTCuttingPlaneMixedCoords(YTCuttingPlane):
     def _cartesian_to_native(self):
         if self._ds_geom is Geometry.SPHERICAL:
             return _cartesian_to_spherical
-        elif self._ds_geom is Geometry.CARTESIAN:
-            return _cartesian_passthrough
         self._raise_unsupported_geometry()
 
     @property
     def _native_to_cartesian(self):
         if self._ds_geom is Geometry.SPHERICAL:
             return _spherical_to_cartesian
-        elif self._ds_geom is Geometry.CARTESIAN:
-            return _cartesian_passthrough
         self._raise_unsupported_geometry()
 
     def _plane_coords(self, in_plane_x, in_plane_y):

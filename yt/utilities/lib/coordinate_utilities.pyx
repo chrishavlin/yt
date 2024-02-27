@@ -9,6 +9,7 @@ from numpy.math cimport INFINITY as NPY_INF
 
 from yt.utilities.lib.fp_utils cimport fmax, fmin
 
+
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -217,28 +218,6 @@ cdef class SphericalMixedCoordBBox(MixedCoordBBox):
         dxyz_i[0] = xri-xli
         dxyz_i[1] = yri-yli
         dxyz_i[2] = zri-zli
-
-
-cdef class CartesianMixedCoordBBox(MixedCoordBBox):
-    # Cartesian bounding boxes... of cartesian elements. Only useful
-    # for testing.
-    cdef void get_cartesian_bbox(
-                        self,
-                        np.float64_t pos0,
-                        np.float64_t pos1,
-                        np.float64_t pos2,
-                        np.float64_t dpos0,
-                        np.float64_t dpos1,
-                        np.float64_t dpos2,
-                        np.float64_t xyz_i[3],
-                        np.float64_t dxyz_i[3]
-                        ) noexcept nogil:
-        xyz_i[0] = pos0
-        xyz_i[1] = pos1
-        xyz_i[2] = pos2
-        dxyz_i[0] = dpos0
-        dxyz_i[1] = dpos1
-        dxyz_i[2] = dpos2
 
 
 @cython.cdivision(True)
