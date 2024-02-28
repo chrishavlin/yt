@@ -245,8 +245,9 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneTransformed):
             # there is one special case to consider!
             # When all vertices lie on one side of the plane, intersection
             # is still possible if the plane intersects the outer cusp of the
-            # spherical volume element. **BUT** if we've reached this far,
-            # the only way for this to happen is if the position of the point
+            # spherical volume element. **BUT** if we've reached this far, the
+            # only way for a plane to intersect the cusp without intersecting
+            # any of the vertices is if the position of the point
             # on the plane that is closest to the origin lies within the
             # element itself.
             if self.c_rtp[0] > left_edge[0]:

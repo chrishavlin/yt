@@ -28,6 +28,7 @@ from yt.utilities.lib.fp_utils cimport (
     i64min,
     iclip,
 )
+
 from yt.utilities.exceptions import YTElementTypeNotRecognized, YTPixelizeError
 
 from cpython.exc cimport PyErr_CheckSignals
@@ -2048,39 +2049,42 @@ def pixelize_off_axis_mixed_coords(
                        int return_mask=0,
 ):
 
-    # pixelize a cartesian image plane passing through a non-cartesian geometry.
-    #
-    # buff
-    #   image buffer 2d array
-    # buff_pos0, buff_pos1, buff_pos2
-    #   native coordinates of image pixels, 2d arrays
-    # pos0, pos1, pos2
-    #   data coordinates in native coordinates
-    # dpos0, dpos1, dpos2
-    #   element widths in native coordinates
-    # plane_c
-    #   the cartesian coordinates of the plane center point
-    # plane_normal
-    #   normal vector for the plane
-    # plane_east
-    #   in-plane +x vector
-    # plane_north
-    #   in-plane +y vector
-    # indices
-    #   index mapping for the data values
-    # data
-    #   the data
-    # bounds
-    #   bounds of the image plain in in-plane coordinates
-    # return_mask
-    #   flag to return a mask
-    #
-    # most of this method is identical to pixelize_off_axis_cartesian. The initial
-    # identification of element-plane intersection uses the cartesian bounding
-    # boxes. When iterating over potential image pixels that intersect,
-    # it then checks that the spherical coordinates of the pixel coordinates
-    # fall within the spherical volume element.
-    #
+    """
+    pixelize a cartesian image plane passing through a non-cartesian geometry.
+
+    Parameters
+    ----------
+    buff
+       image buffer 2d array
+    buff_pos0, buff_pos1, buff_pos2
+       native coordinates of image pixels, 2d arrays
+    pos0, pos1, pos2
+       data coordinates in native coordinates
+    dpos0, dpos1, dpos2
+       element widths in native coordinates
+    plane_c
+        the cartesian coordinates of the plane center point
+    plane_normal
+       normal vector for the plane
+    plane_east
+       in-plane +x vector
+    plane_north
+       in-plane +y vector
+    indices
+       index mapping for the data values
+    data
+       the data
+    bounds
+       bounds of the image plain in in-plane coordinates
+    return_mask
+       flag to return a mask
+    """
+
+    # this method closely follows pixelize_off_axis_cartesian. The initial
+    # identification of image pixels that intersect a given element uses
+    # cartesian bounding boxes. When iterating over potential image pixels
+    # that intersect, it then checks that the native coordinates of the
+    # pixel coordinates fall within the volume element in native coordinates.
 
     cdef np.float64_t x_min, x_max, y_min, y_max
     cdef np.float64_t width, height, px_dx, px_dy, ipx_dx, ipx_dy, md
@@ -2155,8 +2159,8 @@ def pixelize_off_axis_mixed_coords(
 
             for i in range(x_ind_l, x_ind_r):
                 for j in range(y_ind_l, y_ind_r):
-                    # final check to ensure the actual spherical coords of the
-                    # pixel falls within the spherical volume element
+                    # final check to ensure the actual native coords of the
+                    # pixel falls within the volume element
                     if buff_pos0[i,j] < pos0[p] - 0.5 * dpos0[p] or \
                        buff_pos0[i,j] > pos0[p] + 0.5 * dpos0[p] or \
                        buff_pos1[i,j] < pos1[p] - 0.5 * dpos1[p] or \

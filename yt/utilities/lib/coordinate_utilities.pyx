@@ -16,10 +16,23 @@ from yt.utilities.lib.fp_utils cimport fmax, fmin
 cdef (np.float64_t, np.float64_t, np.float64_t) spherical_to_cartesian(np.float64_t r,
                            np.float64_t theta,
                            np.float64_t phi) noexcept nogil:
-        # transform a single point in spherical coords to cartesian
-        # r : radius
-        # theta: colatitude
-        # phi: azimuthal (longitudinal) angle
+        """
+        transform a single point in spherical coordinates to cartesian coordinates
+
+        Parameters
+        ----------
+        r
+            radius
+        theta
+            colatitude
+        phi
+            azimuthal (longitudinal) angle
+
+        Returns
+        -------
+        (x, y, z)
+             cartesian coordinates
+        """
         cdef np.float64_t x, y, xy, z
 
         if r == 0.0:
@@ -38,10 +51,15 @@ cdef (np.float64_t, np.float64_t, np.float64_t) spherical_to_cartesian(np.float6
 cdef (np.float64_t, np.float64_t, np.float64_t) cartesian_to_spherical(np.float64_t x,
                            np.float64_t y,
                            np.float64_t z) noexcept nogil:
-        # transform a single point in cartesian coords to spherical, returns
-        # r : radius
-        # theta: colatitude
-        # phi: azimuthal angle in range (0, 2pi)
+        """
+        transform a single point in cartesian coords to spherical coords, returns
+
+        Returns
+        -------
+        (r, theta, phi)
+            r, theta and phi are scalars. r is radius, theta is colatitude,
+            phi is azimuthal angle in range (0, 2pi).
+        """
         cdef np.float64_t r, theta, phi
         r = sqrt(x*x + y*y + z*z)
         theta = acos(z / r)
@@ -58,10 +76,20 @@ cdef (np.float64_t, np.float64_t, np.float64_t) cartesian_to_spherical(np.float6
 def cartesian_points_to_spherical(np.float64_t[:] x,
                                   np.float64_t[:] y,
                                   np.float64_t[:] z):
-        # transform an array of points in cartesian coords to spherical, returns
-        # r : radius
-        # theta: colatitude
-        # phi: azimuthal angle in range (0, 2pi)
+        """
+        transform an array of points in 3D cartesian coordinates to spherical
+        coordinates
+
+        Parameters
+        ----------
+        x, y, z: 1D arrays of cartesian coordinates.
+
+        Returns
+        -------
+        (r, theta, phi)
+            r, theta and phi are arrays. r is radius, theta is colatitude,
+            phi is azimuthal angle in range (0, 2pi).
+        """
         cdef np.ndarray[np.float64_t, ndim=1] r, theta, phi
         cdef int i, n_x
 
@@ -82,7 +110,23 @@ def cartesian_points_to_spherical(np.float64_t[:] x,
 def spherical_points_to_cartesian(np.float64_t[:] r,
                                   np.float64_t[:] theta,
                                   np.float64_t[:] phi):
-        # transform an array of points in spherical coords to cartesian
+        """
+        transform an array of points in spherical coordinatess to cartesian
+
+        Parameters
+        ----------
+        r
+            radius, 1d array
+        theta
+            colatitude, 1d array
+        phi
+            azimuth, 1d array
+
+        Returns
+        -------
+        (x, y, z)
+            1d arrays of cartesian coordinates
+        """
         cdef np.ndarray[np.float64_t, ndim=1] x, y, z
         cdef int i, n_r
 
@@ -111,6 +155,10 @@ cdef class MixedCoordBBox:
                                 np.float64_t xyz_i[3],
                                 np.float64_t dxyz_i[3]
                                 ) noexcept nogil:
+        # this method must take in scalar 3D position and width values of a single
+        # element in the native coordinates of the data and then calculate the
+        # cartesian bounding boxes, storing the center of the bounding box in
+        # xyz_i and the full-width of the bounding box in dxyz_i.
         pass
 
 
@@ -126,6 +174,8 @@ cdef class SphericalMixedCoordBBox(MixedCoordBBox):
                         np.float64_t xyz_i[3],
                         np.float64_t dxyz_i[3]
                         ) noexcept nogil:
+        # calculate the cartesian bounding box of a single spherical element.
+        # native coordinate ordering is r, theta, phi.
 
         cdef np.float64_t r_i, theta_i, phi_i, dr_i, dtheta_i, dphi_i
         cdef np.float64_t h_dphi, h_dtheta, h_dr, r_r
@@ -138,6 +188,7 @@ cdef class SphericalMixedCoordBBox(MixedCoordBBox):
         cdef np.float64_t NPY_PI_3_2 = 3. * NPY_PI / 2.0
         cdef np.float64_t NPY_2xPI = 2. * NPY_PI
 
+        # rename to make things easier to follow
         r_i = pos0
         theta_i = pos1
         phi_i = pos2
@@ -178,7 +229,7 @@ cdef class SphericalMixedCoordBBox(MixedCoordBBox):
                     zri = fmax(zri, zi)
 
         # need to correct for special cases:
-        # if polar angle, phi, spans pi/2, pi or 3pi/2 then just
+        # if azimuthal angle, phi, spans pi/2, pi or 3pi/2 then just
         # taking the min/max of the corners will miss the cusp of the
         # element. When this condition is met, the x/y min/max will
         # equal +/- the projection of the max r in the xy plane -- in this case,
@@ -186,8 +237,8 @@ cdef class SphericalMixedCoordBBox(MixedCoordBBox):
         # the x-y plane will change depending on the whether theta < or > pi/2,
         # so the following calculates for the min/max theta value of the element
         # and takes the max.
-        # ALSO note, that the following does check for when an edge aligns with the
-        # phi=0/2pi, it does not handle an element spanning the periodic boundary.
+        # ALSO note, that the following does check for when an edge aligns with
+        # phi=0/2pi, but does not handle an element spanning the periodic boundary.
         # Oh and this may break down for large elements that span whole
         # quadrants...
         phi_lr =  phi_i - h_dphi
@@ -203,7 +254,6 @@ cdef class SphericalMixedCoordBBox(MixedCoordBBox):
             r_xy = fmax(r_xy, r_xy2)
 
         if phi_lr == 0.0 or phi_lr2 == NPY_2xPI:
-            # need to re-check this, for when theta spans equator
             xri = r_xy
         elif phi_lr < NPY_PI_2 and phi_lr2  > NPY_PI_2:
             yri = r_xy
@@ -237,14 +287,26 @@ def cartesian_bboxes(MixedCoordBBox bbox_handler,
                       np.float64_t[:] dy,
                       np.float64_t[:] dz,
                                       ):
-    # calculates the cartesian bounding boxes around non-cartesian
-    # volume elements
-    #
-    # bbox_handler : a MixedCoordBBox child instance
-    # pos0, pos1, pos2: native coordinates of element centers
-    # dpos0, dpos1, dpos2: element widths in native coordinates
-    # x, y, z: cartesian centers of bounding boxes, modified in place
-    # dx, dy, dz : full-widths of the cartesian bounding boxes, modified in place
+    """
+    calculate the cartesian bounding boxes around non-cartesian
+    volume elements
+
+    Parameters
+    ----------
+    bbox_handler
+        a MixedCoordBBox child instance
+    pos0, pos1, pos2
+        native coordinates of element centers, 1d arrays
+    dpos0, dpos1, dpos2
+        element widths in native coordinates, 1d arrays
+
+    The following parameters are modified in place with the result:
+
+    x, y, z:
+        cartesian centers of cartesian bounding boxes
+    dx, dy, dz
+        full-widths of the cartesian bounding boxes
+    """
 
     cdef int i, n_pos
     cdef np.float64_t xyz_i[3]

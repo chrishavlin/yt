@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from yt.geometry.selection_routines import cutting_mixed_spherical_selector
+from yt.testing import fake_amr_ds
 
 
 class HelpfulPlaneObject:
@@ -29,8 +30,8 @@ def test_spherical_cutting_plane_spots(xy_plane_at_001):
 
     # left/right edge values are given in spherical coordinates with
     # order of (r, theta, phi) where
-    #   theta is the azimuthal/latitudinal
-    #   phi is the polar/longitudinal angle (bounds 0 to 2pi).
+    #   theta is the colatitude
+    #   phi is the azimuthal/longitudinal angle (bounds 0 to 2pi).
 
     def _in_rads(x):
         return x * np.pi / 180
@@ -47,9 +48,6 @@ def test_spherical_cutting_plane_spots(xy_plane_at_001):
 
 
 def test_spherical_cutting_plane(xy_plane_at_001):
-    import numpy as np
-
-    from yt.testing import fake_amr_ds
 
     ds = fake_amr_ds(geometry="spherical")
 
@@ -68,14 +66,10 @@ def test_spherical_cutting_plane(xy_plane_at_001):
     # r cannot be smaller than the distance from plane to origin
     assert np.min(r) >= plane_center[2]
 
-    # how close the z value is to the plane's z value
-    # depends on the size of the elements, the closeness here
-    # was found empirically
+    # z values of identified elements (this will be the z at the center
+    # of elements!)
     z = r * np.cos(theta)
-    max_z = np.max(np.abs(z.to("code_length").d - 0.5))
-    assert np.isclose(max_z, 0.04212724)
-
-
-def test_spherical_cutting_plane_frb():
-    # future image test
-    pass
+    # distance from z values to the z value of the plane should be small.
+    # how small depends on the size of the elements.
+    z_dist = np.abs(z.to("code_length").d - 0.5)
+    assert np.max(z_dist) < 0.05
