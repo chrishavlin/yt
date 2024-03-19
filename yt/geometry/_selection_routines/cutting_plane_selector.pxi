@@ -142,13 +142,17 @@ cdef class CuttingPlaneTransformed(CuttingPlaneSelector):
     cdef int select_bbox(self, np.float64_t left_edge[3],
                                np.float64_t right_edge[3]) noexcept nogil:
         # child classes may over-ride if needed
-        return self._select_bbox(left_edge, right_edge)
+        cdef np.float64_t extra_points[3]
+        return self._select_bbox(left_edge, right_edge, 0, extra_points)
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @cython.cdivision(True)
-    cdef int _select_bbox(self, np.float64_t left_edge[3],
-                               np.float64_t right_edge[3]) noexcept nogil:
+    cdef int _select_bbox(self,
+                          np.float64_t left_edge[3],
+                          np.float64_t right_edge[3],
+                          int check_extra,
+                          np.float64_t extra_points[3],) noexcept nogil:
 
         # the bbox selection here works by calculating the signed-distance from
         # the plane to each vertex of the bounding box. If there is no
@@ -183,6 +187,18 @@ cdef class CuttingPlaneTransformed(CuttingPlaneSelector):
                     else :
                         if gd < 0: all_over = 0
                         if gd > 0: all_under = 0
+
+        if check_extra == 1:
+            arr[0] = extra_points
+            for i in range(3):
+                pos[i] = arr[0][i]
+            self.transform_vertex_pos(pos, pos_cart)
+            gd = self.d
+            for n in range(3):
+                gd += pos_cart[n] * self.norm_vec[n]
+            if gd < 0: all_over = 0
+            if gd > 0: all_under = 0
+
         if all_over == 1 or all_under == 1:
             return 0
         return 1
@@ -230,7 +246,7 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneTransformed):
          # left/right edge here are in spherical coordinates in (r, theta, phi)
 
          cdef int selected
-         cdef np.float64_t left_edge_c[3], right_edge_c[3]
+         cdef np.float64_t left_edge_c[3], right_edge_c[3], mid_point[3]
 
          # first check closest-approach condition
          if right_edge[0] <= self.r_min:
@@ -238,8 +254,13 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneTransformed):
              return 0
 
          # run the plane-vertex distance check (vertex positions are converted to
-         # cartesian within _select_bbox
-         selected = self._select_bbox(left_edge, right_edge)
+         # cartesian within _select_bbox), with additional point on the outer
+         # radius at the mid point of the angular coords: this catches some
+         # edge cases for large angular ranges.
+         mid_point[0] = right_edge[0]
+         mid_point[1] = (left_edge[1] + right_edge[1]) / 2.0
+         mid_point[2] = (left_edge[2] + right_edge[2]) / 2.0
+         selected = self._select_bbox(left_edge, right_edge, 1, mid_point)
 
          if selected == 0:
             # there is one special case to consider!
