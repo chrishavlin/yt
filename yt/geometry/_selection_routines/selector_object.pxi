@@ -53,14 +53,19 @@ cdef class SelectorObject:
         cdef np.float64_t RE[3]
         _ensure_code(left_edges)
         _ensure_code(right_edges)
-        with nogil:
-            for n in range(ng):
-                # Call our selector function
-                # Check if the sphere is inside the grid
-                for i in range(3):
-                    LE[i] = left_edges[n, i]
-                    RE[i] = right_edges[n, i]
-                gridi[n] = self.select_grid(LE, RE, levels[n, 0])
+        #with nogil:
+        for n in range(ng):
+            # Call our selector function
+            # Check if the sphere is inside the grid
+            for i in range(3):
+                LE[i] = left_edges[n, i]
+                RE[i] = right_edges[n, i]
+            print(LE)
+            print(RE)
+            print(levels[n,0])
+            print(n)
+            gridi[n] = self.select_grid(LE, RE, levels[n, 0])
+            print(gridi[n])
         return gridi.astype("bool")
 
     def count_octs(self, OctreeContainer octree, int domain_id = -1):

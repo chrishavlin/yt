@@ -1,4 +1,5 @@
 from yt.utilities.lib.coordinate_utilities cimport spherical_to_cartesian, cartesian_to_spherical
+from libc.stdio cimport printf
 
 cdef class CuttingPlaneSelector(SelectorObject):
     cdef public np.float64_t norm_vec[3]  # the unit-normal for the plane
@@ -142,7 +143,7 @@ cdef class CuttingPlaneTransformed(CuttingPlaneSelector):
     cdef int select_bbox(self, np.float64_t left_edge[3],
                                np.float64_t right_edge[3]) noexcept nogil:
         # child classes may over-ride if needed
-        cdef np.float64_t extra_points[3]
+        cdef np.float64_t extra_points[2, 3]
         return self._select_bbox(left_edge, right_edge, 0, extra_points)
 
     @cython.boundscheck(False)
@@ -152,7 +153,7 @@ cdef class CuttingPlaneTransformed(CuttingPlaneSelector):
                           np.float64_t left_edge[3],
                           np.float64_t right_edge[3],
                           int check_extra,
-                          np.float64_t extra_points[3],) noexcept nogil:
+                          np.float64_t extra_points[2, 3],) noexcept nogil:
 
         # the bbox selection here works by calculating the signed-distance from
         # the plane to each vertex of the bounding box. If there is no
@@ -189,15 +190,18 @@ cdef class CuttingPlaneTransformed(CuttingPlaneSelector):
                         if gd > 0: all_under = 0
 
         if check_extra == 1:
-            arr[0] = extra_points
-            for i in range(3):
-                pos[i] = arr[0][i]
-            self.transform_vertex_pos(pos, pos_cart)
-            gd = self.d
-            for n in range(3):
-                gd += pos_cart[n] * self.norm_vec[n]
-            if gd < 0: all_over = 0
-            if gd > 0: all_under = 0
+            printf("check extra")
+            for i in range(2):
+                for j in range(3):
+                    pos[j] = extra_points[j][i]
+                self.transform_vertex_pos(pos, pos_cart)
+                gd = self.d
+                for n in range(3):
+                    printf("pos_cart %f\n", pos_cart[n])
+                    gd += pos_cart[n] * self.norm_vec[n]
+                printf("gd %f\n", gd)
+                if gd < 0: all_over = 0
+                if gd > 0: all_under = 0
 
         if all_over == 1 or all_under == 1:
             return 0
@@ -241,25 +245,47 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneTransformed):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @cython.cdivision(True)
-    cdef int select_bbox(self, np.float64_t left_edge[3],
-                               np.float64_t right_edge[3]) noexcept nogil:
+    cdef int select_bbox(self,
+                         np.float64_t left_edge[3],
+                         np.float64_t right_edge[3]) noexcept nogil:
          # left/right edge here are in spherical coordinates in (r, theta, phi)
 
          cdef int selected
-         cdef np.float64_t left_edge_c[3], right_edge_c[3], mid_point[3]
+         cdef np.float64_t left_edge_c[3], right_edge_c[3], mid_point[2, 3]
+
+         printf("helloooo")
 
          # first check closest-approach condition
-         if right_edge[0] <= self.r_min:
-             # intersection impossible!
-             return 0
+         #if right_edge[0] <= self.r_min:
+         #    # intersection impossible! if angular range is small...
+         #    return 0
 
          # run the plane-vertex distance check (vertex positions are converted to
          # cartesian within _select_bbox), with additional point on the outer
          # radius at the mid point of the angular coords: this catches some
          # edge cases for large angular ranges.
-         mid_point[0] = right_edge[0]
-         mid_point[1] = (left_edge[1] + right_edge[1]) / 2.0
-         mid_point[2] = (left_edge[2] + right_edge[2]) / 2.0
+         mid_point[0, 0] = right_edge[0]
+         mid_point[0, 1] = (left_edge[1] + right_edge[1]) / 2.0
+
+         mid_point[1, 0] = right_edge[0]
+         mid_point[1, 1] = (left_edge[1] + right_edge[1]) / 2.0
+
+         if left_edge[2] - right_edge[2] < 3.14:
+            mid_point[0, 2] = 3.14 / 2.0
+            mid_point[1, 2] = 3.14 / 2.0
+         else:
+            mid_point[0, 2] = 3.14 / 2.0
+            mid_point[1, 2] = 3.14 * 4.0 / 3.0
+
+         printf("left_edge %f\n", left_edge[0])
+         printf("left_edge %f\n", left_edge[1])
+         printf("left_edge %f\n", left_edge[2])
+         printf("right_edge %f\n", right_edge[0])
+         printf("right_edge %f\n", right_edge[1])
+         printf("right_edge %f\n", right_edge[2])
+         printf("mid_point %f\n", mid_point[0])
+         printf("mid_point %f\n", mid_point[1])
+         printf("mid_point %f\n", mid_point[2])
          selected = self._select_bbox(left_edge, right_edge, 1, mid_point)
 
          if selected == 0:
@@ -294,6 +320,8 @@ cdef class SphericalCuttingPlaneSelector(CuttingPlaneTransformed):
              left_edge[i] = left_edge_in[i]
              right_edge[i] = right_edge_in[i]
 
+         print(left_edge)
+         print(right_edge)
          return self.select_bbox(left_edge, right_edge)
 
 

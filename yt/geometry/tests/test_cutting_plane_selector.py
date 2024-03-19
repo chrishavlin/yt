@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from yt.geometry.selection_routines import cutting_mixed_spherical_selector
-
+from yt import load_uniform_grid
 
 class HelpfulPlaneObject:
     # a bare-bones skeleton of a data object to use for initializing
@@ -66,6 +66,40 @@ def test_large_angular_range():
         selected = scp._select_single_bbox(left_edge, right_edge)
         assert selected
 
+        lev = np.array([[0, ]], dtype=np.int32)
+        left_edges = np.array([left_edge,])
+        right_edges = np.array([right_edge, ])
+        grid_sel = scp.select_grids(left_edges, right_edges, lev)
+        assert grid_sel
+
+
+def test_large_angular_range_ds():
+
+    bbox = np.array([[0.5, 1.0], [0, np.pi], [0, np.pi]])
+
+    shp = (32,) * 3
+    data = {"density": np.random.random(shp)}
+
+    ds = load_uniform_grid(
+        data,
+        shp,
+        bbox=bbox,
+        geometry="spherical",
+        axis_order=("r", "theta", "phi"),
+        length_unit="m",
+        nprocs=1
+    )
+
+    normal = ds.arr([0., 1., 0], 'code_length')
+    center = ds.arr([0.0, 0.2, 0.], 'code_length')
+    slc = ds.cutting_mixed(normal, center)
+
+    le = ds.index.grid_left_edge
+    re = ds.index.grid_right_edge
+    lev = ds.index.grid_levels
+    # le, re, lev
+    selected = slc.selector.select_grids(le, re, lev)
+    assert np.all(selected)
 
 def test_spherical_cutting_plane(xy_plane_at_001):
     import numpy as np
