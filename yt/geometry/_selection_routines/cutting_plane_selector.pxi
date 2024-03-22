@@ -143,8 +143,11 @@ cdef class CuttingPlaneTransformed(CuttingPlaneSelector):
     cdef int select_bbox(self, np.float64_t left_edge[3],
                                np.float64_t right_edge[3]) noexcept nogil:
         # child classes may over-ride if needed
-        cdef np.float64_t extra_points[2, 3]
-        return self._select_bbox(left_edge, right_edge, 0, extra_points)
+        cdef np.int64_t n_points[3]
+        n_points[0] = 2
+        n_points[1] = 2
+        n_points[2] = 2
+        return self._select_bbox(left_edge, right_edge, n_points)
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
@@ -152,30 +155,41 @@ cdef class CuttingPlaneTransformed(CuttingPlaneSelector):
     cdef int _select_bbox(self,
                           np.float64_t left_edge[3],
                           np.float64_t right_edge[3],
-                          int check_extra,
-                          np.float64_t extra_points[2, 3],) noexcept nogil:
+                          np.int64_t n_points[3],
+                          ) noexcept nogil:
 
         # the bbox selection here works by calculating the signed-distance from
         # the plane to each vertex of the bounding box. If there is no
         # intersection, the signed-distance for every vertex will have the same
         # sign whereas if the sign flips then the plane must intersect the
         # bounding box.
+        #
+        # n_points :
+        #   the number of extra points to check in each dimension.
+        #   (2,2,2) is equivalent to simply checking the corners of the
+        #   bounding box.
+        #
         cdef int i, j, k, n
         cdef np.float64_t *arr[2]
         cdef np.float64_t pos[3]
+        cdef np.float64_t dpos[3]
         cdef np.float64_t pos_cart[3]
         cdef np.float64_t gd
         arr[0] = left_edge
         arr[1] = right_edge
+
+        for i in range(3):
+            dpos[i] = (arr[i][1] - arr[i][0]) / (<float> n_points[i] - 1.0)
+
         all_under = 1
         all_over = 1
-        # Check each corner
-        for i in range(2):
-            pos[0] = arr[i][0]
-            for j in range(2):
-                pos[1] = arr[j][1]
-                for k in range(2):
-                    pos[2] = arr[k][2]
+
+        for i in range(n_points[0]):
+            pos[0] = arr[0][0] + <float> i * dpos[0]
+            for j in range(n_points[1]):
+                pos[1] = arr[0][1] + <float> j * dpos[1]
+                for k in range(n_points[2]):
+                    pos[2] = arr[0][2] + <float> k * dpos[2]
                     self.transform_vertex_pos(pos, pos_cart)
                     gd = self.d
                     for n in range(3):
@@ -188,20 +202,6 @@ cdef class CuttingPlaneTransformed(CuttingPlaneSelector):
                     else :
                         if gd < 0: all_over = 0
                         if gd > 0: all_under = 0
-
-        if check_extra == 1:
-            printf("check extra")
-            for i in range(2):
-                for j in range(3):
-                    pos[j] = extra_points[j][i]
-                self.transform_vertex_pos(pos, pos_cart)
-                gd = self.d
-                for n in range(3):
-                    printf("pos_cart %f\n", pos_cart[n])
-                    gd += pos_cart[n] * self.norm_vec[n]
-                printf("gd %f\n", gd)
-                if gd < 0: all_over = 0
-                if gd > 0: all_under = 0
 
         if all_over == 1 or all_under == 1:
             return 0
