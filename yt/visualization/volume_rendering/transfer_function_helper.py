@@ -126,25 +126,21 @@ class TransferFunctionHelper:
         factor = self.tf.funcs[-1].y.size / self.tf.funcs[-1].y.sum()
         self.tf.funcs[-1].y *= 2 * factor
 
-    def plot(self, fn=None, profile_field=None, profile_weight=None):
+    def create_plot(self, ax=None, profile_field=None, profile_weight=None):
         """
-        Save the current transfer function to a bitmap, or display
-        it inline.
+        Plot the current transfer function
 
         Parameters
         ----------
-        fn: string, optional
-            Filename to save the image to. If None, the returns an image
-            to an IPython session.
-
-        Returns
-        -------
-
-        If fn is None, will return an image to an IPython notebook.
+        ax
+            a matplotlib Axes object to plot on. If None, uses gca().
+        profile_field
+            the field to profile. If None, no profile is added to the plot
+        profile_weight
+            the weight to use to generate a profile
 
         """
-        from matplotlib.backends.backend_agg import FigureCanvasAgg
-        from matplotlib.figure import Figure
+        from matplotlib.pyplot import gca
 
         if self.tf is None:
             self.build_transfer_function()
@@ -164,9 +160,9 @@ class TransferFunctionHelper:
             [tf.funcs[0].y, tf.funcs[1].y, tf.funcs[2].y, np.ones_like(x)]
         ).T
 
-        fig = Figure(figsize=[6, 3])
-        canvas = FigureCanvasAgg(fig)
-        ax = fig.add_axes([0.2, 0.2, 0.75, 0.75])
+        if ax is None:
+            ax = gca()
+
         ax.bar(
             x,
             tf.funcs[3].y,
@@ -200,6 +196,31 @@ class TransferFunctionHelper:
         ax.set_ylabel(r"$\mathrm{alpha}$")
         ax.set_ylim(y.max() * 1.0e-3, y.max() * 2)
 
+    def plot(self, fn=None, profile_field=None, profile_weight=None):
+        """
+        Save the current transfer function to a bitmap, or display
+        it inline.
+
+        Parameters
+        ----------
+        fn: string, optional
+            Filename to save the image to. If None, the returns an image
+            to an IPython session.
+
+        Returns
+        -------
+
+        If fn is None, will return an image to an IPython notebook.
+
+        """
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.figure import Figure
+
+        fig = Figure(figsize=[6, 3])
+        canvas = FigureCanvasAgg(fig)
+        ax = fig.add_axes([0.2, 0.2, 0.75, 0.75])
+
+        self.create_plot(ax, profile_field=profile_field, profile_weight=profile_weight)
         if fn is None:
             from IPython.core.display import Image
 
