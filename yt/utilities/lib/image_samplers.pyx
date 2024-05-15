@@ -14,7 +14,7 @@ Image sampler definitions
 import numpy as np
 
 cimport cython
-from libc.math cimport sqrt
+from libc.math cimport sqrt, isfinite
 from libc.stdlib cimport free, malloc
 
 from yt.utilities.lib cimport lenses
@@ -343,6 +343,25 @@ cdef class ProjectionSampler(ImageSampler):
         cdef int di = (index[0]*vc.dims[1]+index[1])*vc.dims[2]+index[2]
         for i in range(imin(4, vc.n_fields)):
             im.rgba[i] += vc.data[i][di] * dl
+
+
+cdef class ProjectionSamplerMax(ImageSampler):
+
+    @staticmethod
+    cdef void sample(
+                 VolumeContainer *vc,
+                 np.float64_t v_pos[3],
+                 np.float64_t v_dir[3],
+                 np.float64_t enter_t,
+                 np.float64_t exit_t,
+                 int index[3],
+                 void *data) noexcept nogil:
+        cdef ImageAccumulator *im = <ImageAccumulator *> data
+        cdef int i
+        cdef int di = (index[0]*vc.dims[1]+index[1])*vc.dims[2]+index[2]
+        for i in range(imin(4, vc.n_fields)):
+            if isfinite(vc.data[i][di]) and vc.data[i][di] > im.rgba[i]:
+                im.rgba[i] = vc.data[i][di]
 
 
 cdef class InterpolatedProjectionSampler(ImageSampler):

@@ -117,10 +117,10 @@ def off_axis_projection(
     >>> write_image(np.log10(image), "offaxis.png")
 
     """
-    if method not in ("integrate", "sum"):
-        raise NotImplementedError(
-            "Only 'integrate' or 'sum' methods are valid for off-axis-projections"
-        )
+    # if method not in ("integrate", "sum"):
+    #     raise NotImplementedError(
+    #         "Only 'integrate' or 'sum' methods are valid for off-axis-projections"
+    #     )
 
     if interpolated:
         raise NotImplementedError(
@@ -345,6 +345,7 @@ def off_axis_projection(
         vol.set_weight_field(weight)
     ptf = ProjectionTransferFunction()
     vol.set_transfer_function(ptf)
+    vol.projection_type = method
     camera = sc.add_camera(data_source)
     camera.set_width(width)
     if not is_sequence(resolution):

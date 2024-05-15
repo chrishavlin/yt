@@ -8,6 +8,7 @@ from yt.utilities.lib import bounding_volume_hierarchy
 from yt.utilities.lib.image_samplers import (
     InterpolatedProjectionSampler,
     ProjectionSampler,
+    ProjectionSamplerMax,
     VolumeRenderSampler,
 )
 from yt.utilities.on_demand_imports import NotAModule
@@ -112,7 +113,7 @@ def new_interpolated_projection_sampler(camera, render_source):
     return sampler
 
 
-def new_projection_sampler(camera, render_source):
+def new_projection_sampler(camera, render_source, *, method="integrate"):
     params = ensure_code_unit_params(camera._get_sampler_params(render_source))
     params.update(transfer_function=render_source.transfer_function)
     params.update(num_samples=render_source.num_samples)
@@ -135,7 +136,10 @@ def new_projection_sampler(camera, render_source):
         kwargs["zbuffer"] = render_source.zbuffer.z
     else:
         kwargs["zbuffer"] = np.ones(params["image"].shape[:2], "float64")
-    sampler = ProjectionSampler(*args, **kwargs)
+    if method in ("integrate", "sum"):
+        sampler = ProjectionSampler(*args, **kwargs)
+    elif method == "max":
+        sampler = ProjectionSamplerMax(*args, **kwargs)
     return sampler
 
 

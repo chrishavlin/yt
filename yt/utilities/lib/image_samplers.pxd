@@ -71,6 +71,9 @@ cdef class ImageSampler:
 cdef class ProjectionSampler(ImageSampler):
     pass
 
+cdef class ProjectionSamplerMax(ImageSampler):
+    pass
+
 cdef class InterpolatedProjectionSampler(ImageSampler):
     cdef VolumeRenderAccumulator *vra
     cdef public object tf_obj

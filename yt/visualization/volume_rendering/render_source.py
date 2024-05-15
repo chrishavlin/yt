@@ -245,6 +245,7 @@ class VolumeSource(RenderSource, abc.ABC):
         self.num_threads = 0
         self.num_samples = 10
         self.sampler_type = "volume-render"
+        self._projection_type = "integrate"
 
         self._volume_valid = False
 
@@ -258,6 +259,22 @@ class VolumeSource(RenderSource, abc.ABC):
 
         self.tfh = TransferFunctionHelper(self.data_source.pf)
         self.tfh.set_field(self.field)
+
+    @property
+    def projection_type(self):
+        return self._projection_type
+
+    @projection_type.setter
+    def projection_type(self, value):
+        if self.sampler_type != "projection":
+            raise RuntimeError(
+                "Can only set projection_type when sampler_type == 'projection'"
+            )
+        valid_values = ("integrate", "sum", "max")
+        if value not in valid_values:
+            msg = f"projection_type value must be one of {valid_values}, found {value}"
+            raise ValueError(msg)
+        self._projection_type = value
 
     @property
     def transfer_function(self):
@@ -481,7 +498,7 @@ class VolumeSource(RenderSource, abc.ABC):
         elif self.sampler_type == "projection" and interpolated:
             sampler = new_interpolated_projection_sampler(camera, self)
         elif self.sampler_type == "projection":
-            sampler = new_projection_sampler(camera, self)
+            sampler = new_projection_sampler(camera, self, method=self.projection_type)
         else:
             NotImplementedError(f"{self.sampler_type} not implemented yet")
         self.sampler = sampler
