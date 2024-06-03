@@ -11,7 +11,6 @@ import matplotlib.image as mpimg
 import numpy as np
 
 import yt.visualization.plot_window as pw
-from yt.utilities.answer_testing.framework import create_obj
 from yt.utilities.answer_testing.testing_utilities import (
     _create_phase_plot_attribute_plot,
     _create_plot_window_attribute_plot,
@@ -60,6 +59,8 @@ def grid_values(ds, field):
 
 
 def projection_values(ds, axis, field, weight_field, dobj_type):
+    from yt.utilities.answer_testing.framework import create_obj
+
     if dobj_type is not None:
         dobj = create_obj(ds, dobj_type)
     else:
@@ -85,6 +86,8 @@ def projection_values(ds, axis, field, weight_field, dobj_type):
 
 
 def field_values(ds, field, obj_type=None, particle_type=False):
+    from yt.utilities.answer_testing.framework import create_obj
+
     # If needed build an instance of the dataset type
     obj = create_obj(ds, obj_type)
     determined_field = obj._determine_fields(field)[0]
@@ -107,6 +110,8 @@ def field_values(ds, field, obj_type=None, particle_type=False):
 
 
 def pixelized_projection_values(ds, axis, field, weight_field=None, dobj_type=None):
+    from yt.utilities.answer_testing.framework import create_obj
+
     if dobj_type is not None:
         obj = create_obj(ds, dobj_type)
     else:
@@ -177,6 +182,8 @@ def generic_array(func, args=None, kwargs=None):
 
 
 def sph_answer(ds, ds_str_repr, ds_nparticles, field, weight, ds_obj, axis):
+    from yt.utilities.answer_testing.framework import create_obj
+
     # Make sure we're dealing with the right dataset
     assert str(ds) == ds_str_repr
     # Set up keys of test names
