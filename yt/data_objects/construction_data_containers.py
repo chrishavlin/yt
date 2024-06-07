@@ -1422,7 +1422,8 @@ class YTTiledArbitraryGrid:
             grid = self._grids[igrid]
             vals = delayed(_get_filled_grid)(grid, field)
             vals = da.from_delayed(vals, grid.shape, dtype="float64")
-            full_domain[self._grid_slc[igrid]] = vals
+            slc = self._grid_slc[igrid]
+            full_domain[slc] = vals
         return full_domain
 
     def _coord_array(self, idim):
