@@ -1415,6 +1415,8 @@ class YTTiledArbitraryGrid:
     #         re = grid.right_edge
 
     def to_dask(self, field, chunks=None):
+        # SEE: https://docs.dask.org/en/latest/array-chunks.html#specifying-chunk-shapes
+        # MAKE THIS BETTER. CALCULATE chunks from get_psize, split_arrays outputs.
         from dask import array as da, delayed
 
         full_domain = da.empty(self.dims, chunks=chunks, dtype="float64")
