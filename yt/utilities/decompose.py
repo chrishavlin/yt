@@ -103,19 +103,9 @@ def get_psize(n_d, pieces):
     return p_size
 
 
-def split_array(gle, gre, shape, psize, *, cell_widths=None):
-    """Split array into px*py*pz subarrays."""
+def _split_array(gle, gre, shape, psize, *, cell_widths=None):
     n_d = np.array(shape, dtype=np.int64)
     dds = (gre - gle) / shape
-    left_edges = []
-    right_edges = []
-    shapes = []
-    slices = []
-
-    if cell_widths is None:
-        cell_widths_by_grid = None
-    else:
-        cell_widths_by_grid = []
 
     for i in range(psize[0]):
         for j in range(psize[1]):
@@ -132,17 +122,33 @@ def split_array(gle, gre, shape, psize, *, cell_widths=None):
                         cws.append(cell_widths[idim][lei[idim] : rei[idim]])
                         offset_le.append(np.sum(cell_widths[idim][0 : lei[idim]]))
                         offset_re.append(offset_le[idim] + np.sum(cws[idim]))
-                    cell_widths_by_grid.append(cws)
                     offset_re = np.array(offset_re)
                     offset_le = np.array(offset_le)
                 else:
+                    cws = None
                     offset_le = lei * dds
                     offset_re = rei * dds
                 lle = gle + offset_le
                 lre = gle + offset_re
-                left_edges.append(lle)
-                right_edges.append(lre)
-                shapes.append(rei - lei)
-                slices.append(np.s_[lei[0] : rei[0], lei[1] : rei[1], lei[2] : rei[2]])
+                slc = np.s_[lei[0] : rei[0], lei[1] : rei[1], lei[2] : rei[2]]
+                yield lle, lre, rei - lei, slc, cws
+
+
+def split_array(gle, gre, shape, psize, *, cell_widths=None):
+    """Split array into px*py*pz subarrays."""
+
+    left_edges = []
+    right_edges = []
+    shapes = []
+    slices = []
+    cell_widths_by_grid = []
+
+    grids = _split_array(gle, gre, shape, psize, cell_widths=cell_widths)
+    for lle, lre, shp, slc, cws in grids:
+        left_edges.append(lle)
+        right_edges.append(lre)
+        shapes.append(shp)
+        slices.append(slc)
+        cell_widths_by_grid.append(cws)
 
     return left_edges, right_edges, shapes, slices, cell_widths_by_grid

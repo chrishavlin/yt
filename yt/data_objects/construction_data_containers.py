@@ -35,6 +35,7 @@ from yt.loaders import load_uniform_grid
 from yt.units._numpy_wrapper_functions import uconcatenate
 from yt.units.unit_object import Unit  # type: ignore
 from yt.units.yt_array import YTArray
+from yt.utilities.decompose import _split_array, get_psize
 from yt.utilities.exceptions import (
     YTNoAPIKey,
     YTNotInsideNotebook,
@@ -1359,6 +1360,118 @@ class YTArbitraryGrid(YTCoveringGrid):
         size = self.ActiveDimensions
 
         return bounds, size
+
+
+# class PyramidalArbitraryGrid:
+class YTTiledArbitraryGrid:
+    def __init__(
+        self,
+        left_edge,
+        right_edge,
+        dims: tuple[int, int, int],
+        nchunks: int,
+        ds=None,
+        field_parameters=None,
+        parallel_method: str | None = None,
+        data_source=None,
+        cache: bool = False,
+    ):
+        self.left_edge = left_edge
+        self.right_edge = right_edge
+        self.ds = ds
+        self.data_source = data_source
+        self.field_parameters = field_parameters
+        self.parallel_method = parallel_method
+        self.dims = dims
+        self._psize = get_psize(np.array(dims), nchunks)
+        self._grids: list[YTArbitraryGrid] = []
+        self._grid_slc: list[tuple[slice, slice, slice]] = []
+        self._get_grids()
+        self._ngrids = len(self._grids)
+        self.dds = (self.right_edge - self.left_edge) / self.dims
+
+        self.cache = cache
+        self._left_cell_center = self.left_edge + self.dds / 2.0
+        self._right_cell_center = self.right_edge - self.dds / 2.0
+
+    def _get_grids(self):
+        # initialize the arbitrary grids
+        gen = _split_array(
+            self.left_edge, self.right_edge, self.dims, self._psize, cell_widths=None
+        )
+
+        for le, re, shp, slc, _ in gen:
+            grid = YTArbitraryGrid(
+                le, re, shp, ds=self.ds, field_parameters=self.field_parameters
+            )
+            self._grids.append(grid)
+            self._grid_slc.append(slc)
+
+    # def to_zarr(self, store, field):
+    #     for grid in self._grids:
+    #         # grid._fill_fields(fields)
+    #         vals = grid[field]
+    #         le = grid.left_edge
+    #         re = grid.right_edge
+
+    def to_dask(self, field, chunks=None):
+        from dask import array as da, delayed
+
+        full_domain = da.empty(self.dims, chunks=chunks, dtype="float64")
+        for igrid in range(self._ngrids):
+            grid = self._grids[igrid]
+            vals = delayed(_get_filled_grid)(grid, field)
+            vals = da.from_delayed(vals, grid.shape, dtype="float64")
+            full_domain[self._grid_slc[igrid]] = vals
+        return full_domain
+
+    def _coord_array(self, idim):
+        LE = self._left_cell_center[idim]
+        RE = self._right_cell_center[idim]
+        N = self.dims[idim]
+        return np.mgrid[LE : RE : N * 1j]
+
+    def to_xarray(self, field, chunks=None, backend: str = "dask"):
+        import xarray as xr
+
+        if backend == "dask":
+            da = self.to_dask(field, chunks=chunks)
+        elif backend == "numpy":
+            da = self.to_numpy(field)
+        else:
+            raise NotImplementedError()
+
+        dims = self.ds.coordinates.axis_order
+        dim_list = list(dims)
+        coords = {dim: self._coord_array(idim) for idim, dim in enumerate(dims)}
+
+        xrname = field[0] + "_" + field[1]
+
+        xr_ds = xr.DataArray(
+            data=da,
+            dims=dim_list,
+            coords=coords,
+            attrs={"ngrids": self._ngrids, "fieldname": field},
+            name=xrname,
+        )
+        return xr_ds
+
+    def to_numpy(self, field):
+        # get a full, in-mem np array. if you can use this
+        # why not just use a YTArbitraryGrid though...
+        full_domain = np.empty(self.dims, dtype="float64")
+        for igrid in range(self._ngrids):
+            grid = self._grids[igrid]
+            vals = _get_filled_grid(grid, field)
+            full_domain[self._grid_slc[igrid]] = vals
+        return full_domain
+
+
+@staticmethod
+def _get_filled_grid(grid, field):
+    vals = grid[field].copy()
+    del grid[field]
+    return vals
 
 
 class LevelState:
