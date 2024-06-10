@@ -6,6 +6,7 @@ import zipfile
 from functools import partial, wraps
 from re import finditer
 from tempfile import NamedTemporaryFile, TemporaryFile
+from typing import Any, Optional
 
 import numpy as np
 from more_itertools import always_iterable
@@ -1326,6 +1327,22 @@ class YTArbitraryGrid(YTCoveringGrid):
         self.level = 99
         self._setup_data_source()
 
+    def _get_single_field(self, field, fields):
+        dest = np.zeros(self.ActiveDimensions, dtype="float64")
+        for chunk in self._data_source.chunks(fields, "io"):
+            fill_region_float(
+                chunk.fcoords,
+                chunk.fwidth,
+                chunk[field],
+                self.left_edge,
+                self.right_edge,
+                dest,
+                1,
+                self.ds.domain_width,
+                int(any(self.ds.periodicity)),
+            )
+        return dest
+
     def _fill_fields(self, fields):
         fields = [f for f in fields if f not in self.field_data]
         if len(fields) == 0:
@@ -1333,19 +1350,7 @@ class YTArbitraryGrid(YTCoveringGrid):
         # It may be faster to adapt fill_region_float to fill multiple fields
         # instead of looping here
         for field in fields:
-            dest = np.zeros(self.ActiveDimensions, dtype="float64")
-            for chunk in self._data_source.chunks(fields, "io"):
-                fill_region_float(
-                    chunk.fcoords,
-                    chunk.fwidth,
-                    chunk[field],
-                    self.left_edge,
-                    self.right_edge,
-                    dest,
-                    1,
-                    self.ds.domain_width,
-                    int(any(self.ds.periodicity)),
-                )
+            dest = self._get_single_field(field, fields)
             fi = self.ds._get_field_info(field)
             self[field] = self.ds.arr(dest, fi.units)
 
@@ -1372,9 +1377,9 @@ class YTTiledArbitraryGrid:
         nchunks: int,
         ds=None,
         field_parameters=None,
-        parallel_method: str | None = None,
-        data_source=None,
-        cache: bool = False,
+        parallel_method: Optional[str] = None,
+        data_source: Optional[Any] = None,
+        cache: Optional[bool] = False,
     ):
         self.left_edge = left_edge
         self.right_edge = right_edge
@@ -1386,6 +1391,7 @@ class YTTiledArbitraryGrid:
         self._psize = get_psize(np.array(dims), nchunks)
         self._grids: list[YTArbitraryGrid] = []
         self._grid_slc: list[tuple[slice, slice, slice]] = []
+        self.chunks = None
         self._get_grids()
         self._ngrids = len(self._grids)
         self.dds = (self.right_edge - self.left_edge) / self.dims
@@ -1400,12 +1406,29 @@ class YTTiledArbitraryGrid:
             self.left_edge, self.right_edge, self.dims, self._psize, cell_widths=None
         )
 
+        # also record the chunks in the way dask expects them
+        le_chunks = [[] for _ in range(3)]
+        re_chunks = [[] for _ in range(3)]
+
         for le, re, shp, slc, _ in gen:
             grid = YTArbitraryGrid(
                 le, re, shp, ds=self.ds, field_parameters=self.field_parameters
             )
             self._grids.append(grid)
             self._grid_slc.append(slc)
+            for idim in range(3):
+                le_chunks[idim].append(slc[idim].start)
+                re_chunks[idim].append(slc[idim].stop)
+
+        le_chunks = np.array(le_chunks, dtype=int)
+        re_chunks = np.array(re_chunks, dtype=int)
+
+        chunks = []
+        for idim in range(3):
+            le_idim = np.unique(le_chunks[idim, :])
+            re_idim = np.unique(re_chunks[idim, :])
+            chunks.append(tuple(re_idim - le_idim))
+        self.chunks = tuple(chunks)
 
     # def to_zarr(self, store, field):
     #     for grid in self._grids:
@@ -1415,9 +1438,10 @@ class YTTiledArbitraryGrid:
     #         re = grid.right_edge
 
     def to_dask(self, field, chunks=None):
-        # SEE: https://docs.dask.org/en/latest/array-chunks.html#specifying-chunk-shapes
-        # MAKE THIS BETTER. CALCULATE chunks from get_psize, split_arrays outputs.
         from dask import array as da, delayed
+
+        if chunks is None:
+            chunks = self.chunks
 
         full_domain = da.empty(self.dims, chunks=chunks, dtype="float64")
         for igrid in range(self._ngrids):
@@ -1470,10 +1494,13 @@ class YTTiledArbitraryGrid:
         return full_domain
 
 
-@staticmethod
 def _get_filled_grid(grid, field):
-    vals = grid[field].copy()
-    del grid[field]
+    vals = grid._get_single_field(
+        field,
+        [
+            field,
+        ],
+    )
     return vals
 
 
