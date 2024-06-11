@@ -1401,7 +1401,7 @@ class YTTiledArbitraryGrid:
         self._right_cell_center = self.right_edge - self.dds / 2.0
 
     def _get_grids(self):
-        # initialize the arbitrary grids
+        # initialize the arbitrary grid args
         gen = _split_array(
             self.left_edge, self.right_edge, self.dims, self._psize, cell_widths=None
         )
@@ -1411,10 +1411,7 @@ class YTTiledArbitraryGrid:
         re_chunks = [[] for _ in range(3)]
 
         for le, re, shp, slc, _ in gen:
-            grid = YTArbitraryGrid(
-                le, re, shp, ds=self.ds, field_parameters=self.field_parameters
-            )
-            self._grids.append(grid)
+            self._grids.append((le, re, shp))
             self._grid_slc.append(slc)
             for idim in range(3):
                 le_chunks[idim].append(slc[idim].start)
@@ -1445,9 +1442,11 @@ class YTTiledArbitraryGrid:
 
         full_domain = da.empty(self.dims, chunks=chunks, dtype="float64")
         for igrid in range(self._ngrids):
-            grid = self._grids[igrid]
-            vals = delayed(_get_filled_grid)(grid, field)
-            vals = da.from_delayed(vals, grid.shape, dtype="float64")
+            le, re, shp = self._grids[igrid]
+            vals = delayed(_get_filled_grid)(
+                le, re, shp, field, self.ds, self.field_parameters
+            )
+            vals = da.from_delayed(vals, shp, dtype="float64")
             slc = self._grid_slc[igrid]
             full_domain[slc] = vals
         return full_domain
@@ -1488,13 +1487,14 @@ class YTTiledArbitraryGrid:
         # why not just use a YTArbitraryGrid though...
         full_domain = np.empty(self.dims, dtype="float64")
         for igrid in range(self._ngrids):
-            grid = self._grids[igrid]
-            vals = _get_filled_grid(grid, field)
+            le, re, shp = self._grids[igrid]
+            vals = _get_filled_grid(le, re, shp, field, self.ds, self.field_parameters)
             full_domain[self._grid_slc[igrid]] = vals
         return full_domain
 
 
-def _get_filled_grid(grid, field):
+def _get_filled_grid(le, re, shp, field, ds, field_parameters):
+    grid = YTArbitraryGrid(le, re, shp, ds=ds, field_parameters=field_parameters)
     vals = grid._get_single_field(
         field,
         [
