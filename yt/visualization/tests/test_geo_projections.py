@@ -88,7 +88,15 @@ class TestGeoProjections(unittest.TestCase):
 
     @requires_module("cartopy")
     def test_nondefault_transform(self):
+        import shapely
+        from packaging.version import Version
+
         from yt.utilities.on_demand_imports import _cartopy as cartopy
+
+        if Version(np.__version__) >= Version("2.1.0") and Version(
+            shapely.__version__
+        ) <= Version("2.0.5"):
+            self.skipTest("https://github.com/yt-project/yt/issues/4969")
 
         axis = "altitude"
         # Note: The Miller transform has an extent of approx. +/- 180 in x,
@@ -116,6 +124,14 @@ class TestGeoProjections(unittest.TestCase):
 
     @requires_module("cartopy")
     def test_extent(self):
+        import shapely
+        from packaging.version import Version
+
+        if Version(np.__version__) >= Version("2.1.0") and Version(
+            shapely.__version__
+        ) <= Version("2.0.5"):
+            self.skipTest("https://github.com/yt-project/yt/issues/4969")
+
         # checks that the axis extent is narrowed when doing a subselection
         axis = "altitude"
         slc = yt.SlicePlot(self.ds, axis, ("stream", "Density"), origin="native")
