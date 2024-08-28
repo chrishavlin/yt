@@ -18,7 +18,7 @@ from yt.utilities.exceptions import (
 from yt.utilities.lib.interpolators import ghost_zone_interpolate
 from yt.utilities.lib.mesh_utilities import clamp_edges
 from yt.utilities.nodal_data_utils import get_nodal_slices
-
+from yt.data_objects.data_containers import _reconstruct_object
 
 class AMRGridPatch(YTSelectionContainer):
     _spatial = True
@@ -51,6 +51,14 @@ class AMRGridPatch(YTSelectionContainer):
         self._last_mask = None
         self._last_count = -1
         self._last_selector_id = None
+
+    def __reduce__(self):
+        args = tuple(
+            [self.ds._hash(), ('_index_class', 'grid')]
+            + [getattr(self, n) for n in self._con_args]
+            + [self.field_parameters]
+        )
+        return (_reconstruct_object, args)
 
     def get_global_startindex(self):
         """

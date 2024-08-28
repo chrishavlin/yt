@@ -59,12 +59,16 @@ class GridIndex(Index, abc.ABC):
         pass
 
     def __del__(self):
-        del self.grid_dimensions
-        del self.grid_left_edge
-        del self.grid_right_edge
-        del self.grid_levels
-        del self.grid_particle_count
-        del self.grids
+        self._del_attr_if_exists('grid_dimensions')
+        self._del_attr_if_exists('grid_left_edge')
+        self._del_attr_if_exists('grid_right_edge')
+        self._del_attr_if_exists('grid_levels')
+        self._del_attr_if_exists('grid_particle_count')
+        self._del_attr_if_exists('grids')
+
+    def _del_attr_if_exists(self, attr):
+        if hasattr(self, attr):
+            delattr(self, attr)
 
     @property
     def parameters(self):

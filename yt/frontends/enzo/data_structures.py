@@ -213,6 +213,8 @@ class EnzoHierarchy(GridIndex):
 
     # Sets are sorted, so that won't work!
     def _parse_index(self):
+
+        # hmmm -- reinits on very chunk for some reason
         def _next_token_line(token, f):
             for line in f:
                 if line.startswith(token):

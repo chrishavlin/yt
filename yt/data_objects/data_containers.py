@@ -1569,7 +1569,12 @@ def _reconstruct_object(*args, **kwargs):
         ds = datasets.get_ds_hash(dsid)
 
     # instantiate the class with remainder of the args and adjust the state
-    cls = getattr(ds, dtype)
+    if isinstance(dtype, tuple):
+        cls = ds
+        for attr in dtype:
+            cls = getattr(cls, attr)
+    else:
+        cls = getattr(ds, dtype)
     obj = cls(*args[2:-1])
     obj.field_parameters.update(field_parameters)
 
