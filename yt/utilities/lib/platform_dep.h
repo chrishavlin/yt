@@ -2,6 +2,7 @@
 #ifdef MS_WIN32
 #include "malloc.h"
 #include <float.h>
+#if _MSC_VER < 1928
 typedef int int32_t;
 typedef long long int64_t;
 /* Taken from http://siliconandlithium.blogspot.com/2014/05/msvc-c99-mathh-header.html */
@@ -15,11 +16,9 @@ static __inline double rint(double x){
         return copysign(two_to_52 + fa - two_to_52, x);
     }
 }
-#if _MSC_VER < 1928
 static __inline long int lrint(double x){
     return (long)rint(x);
 }
-#endif
 static __inline double fmax(double x, double y){
     return (x > y) ? x : y;
 }
@@ -54,6 +53,9 @@ double erf(double x)
 
     return sign*y;
 }
+#else
+#include <stdint.h>
+#endif
 #elif defined(__FreeBSD__)
 #include <stdint.h>
 #include <stdlib.h>
