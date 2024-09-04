@@ -12,7 +12,7 @@ defaults:
 
 jobs:
   build:
-    name: "$${{ matrix.os }}"
+    name: "py${{ matrix.python-version }} on ${{ matrix.os }}"
     strategy:
       # run all tests even if e.g. image tests fail early
       fail-fast: false
@@ -20,8 +20,9 @@ jobs:
         os: [
           windows-latest,
           windows-2019,
+          ubuntu-latest,
         ]
-        python-version: ['3.12.4', '3.12.5']
+        python-version: ['3.12']
         dependencies: [minimal]
 
     runs-on: ${{ matrix.os }}
