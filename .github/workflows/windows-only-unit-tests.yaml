@@ -1,0 +1,51 @@
+name: Build and Test
+
+on:
+  push:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+
+jobs:
+
+  build:
+    name: "${{ matrix.tests-type }} tests: py${{ matrix.python-version }} on ${{ matrix.os }} (${{ matrix.test-runner }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [
+          windows-latest,
+          windows-2019,
+        ]
+        python-version: ['3.12', '3.11', '3.10']
+        dependencies: [full]
+        tests-type: [unit]
+        test-runner: [pytest]
+
+    runs-on: ${{ matrix.os }}
+
+    concurrency:
+      # auto-cancel any in-progress job *on the same branch*
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.tests-type }}-py${{ matrix.python-version }}-${{ matrix.os }}-${{ matrix.test-runner }}
+      cancel-in-progress: true
+
+    steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Checkout repo
+      uses: actions/checkout@v4
+    - name: Install dependencies and yt
+      shell: bash
+      env:
+        dependencies: ${{ matrix.dependencies }}
+      run: source ./tests/ci_install.sh
+
+    - run: python -m pip list
+    - name: Run Unit Tests (pytest)
+      run: pytest --color=yes
