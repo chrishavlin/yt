@@ -20,7 +20,7 @@ jobs:
         os: [
           windows-latest,
           windows-2019,
-          ubuntu-latest,
+#          ubuntu-latest,
         ]
         python-version: ['3.12']
         dependencies: [full]
@@ -34,15 +34,16 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Checkout repo (bare)
       uses: actions/checkout@v4
-#    - name: Upgrade pip, setuptools
-#      run:
-#            python -m pip install 'pip>=21.2' |
-#            python -m pip install 'setuptools<74.0.0'
+    - name: Upgrade pip, setuptools
+      run:
+            python -m pip install 'pip>=21.2' |
+            python -m pip install 'setuptools<74.0.0'
     - name: Install dependencies and yt
-      shell: bash
-      env:
-        dependencies: ${{ matrix.dependencies }}
-      run: source ./tests/ci_install.sh
+      run: python -m pip install -e "."
+#      shell: bash
+#      env:
+#        dependencies: ${{ matrix.dependencies }}
+#      run: source ./tests/ci_install.sh
 
     - run: python -m pip list
     - name: Check yt import
