@@ -51,6 +51,6 @@ jobs:
     - name: Upload the build log
       uses: actions/upload-artifact@v4
       with:
-        name: build-log
+        name: "log-py{{ matrix.python-version }}-${{ matrix.os }}"
         path: full_build_log.txt
         if-no-files-found: warn
