@@ -1213,10 +1213,6 @@ def pixelize_sph_kernel_projection(
             local_buff[i] = 0.0
 
         for j in prange(0, posx.shape[0], schedule="dynamic"):
-            if j % 100000 == 0:
-                with gil:
-                    PyErr_CheckSignals()
-
             xiter[1] = yiter[1] = ziter[1] = 999
 
             if check_period[0] == 1:
@@ -1569,9 +1565,6 @@ def pixelize_sph_kernel_slice(
             local_buff[i] = 0.0
 
         for j in prange(0, posx.shape[0], schedule="dynamic"):
-            if j % 100000 == 0:
-                with gil:
-                    PyErr_CheckSignals()
             #with gil:
             #    print(j)
             xiter[1] = yiter[1] = 999

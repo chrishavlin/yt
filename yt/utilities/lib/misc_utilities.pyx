@@ -12,7 +12,6 @@ Simple utilities that don't fit anywhere else
 
 import numpy as np
 
-from yt.funcs import get_pbar
 from yt.units.yt_array import YTArray
 
 cimport cython
@@ -32,8 +31,6 @@ cdef extern from "platform_dep.h":
     void *alloca(int)
 
 from cython.parallel import prange
-
-from cpython.exc cimport PyErr_CheckSignals
 
 
 @cython.boundscheck(False)
@@ -979,8 +976,6 @@ def gravitational_binding_energy(
     cdef np.float64_t this_potential
 
     n_q = mass.size
-    pbar = get_pbar("Calculating potential for %d cells with %d thread(s)" % (n_q,num_threads),
-        n_q)
 
     # using reversed iterator in order to make use of guided scheduling
     # (inner loop is getting more and more expensive)
@@ -1003,14 +998,7 @@ def gravitational_binding_energy(
                    (y_i - y_o) * (y_i - y_o) +
                    (z_i - z_o) * (z_i - z_o))
         total_potential += this_potential
-        if truncate and this_potential / kinetic > 1.:
-            break
-        with gil:
-            PyErr_CheckSignals()
-            # this call is not thread safe, but it gives a reasonable approximation
-            pbar.update()
 
-    pbar.finish()
     return total_potential
 
 # The OnceIndirect code is from:
