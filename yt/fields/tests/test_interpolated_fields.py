@@ -51,3 +51,7 @@ def test_add_interpolated_fields(ds_axesfields_table, axes_data_type):
     assert field in ds.derived_field_list
 
     _ = ds.all_data()[field]
+
+    # above field should only be registered with the above dataset, check it
+    ds2 = fake_amr_ds()
+    assert field not in ds2.derived_field_list

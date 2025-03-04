@@ -23,13 +23,12 @@ def add_interpolated_field(
     table_data: "np.ndarray",
     axes_data: tuple["np.ndarray",] | tuple[float,],
     axes_fields: list[FieldKey],
-    ftype: FieldType = None,
+    ftype: FieldType | None = None,
     particle_type: Any | None = None,
     validators: list[FieldValidator] | None = None,
     truncate: bool = True,
     *,
     sampling_type: str = "local",
-    ds=None,
     units: str | bytes | Unit | None = None,
     **kwargs,
 ):
@@ -82,12 +81,17 @@ def add_interpolated_field(
     def _interpolated_field(field, data):
         return my_interpolator(data)
 
-    add_field(
+    if "ds" in kwargs:
+        ds = kwargs.pop("ds")
+        add_field_func = ds.add_field
+    else:
+        add_field_func = add_field
+
+    add_field_func(
         fieldname,
         function=_interpolated_field,
         sampling_type=sampling_type,
         units=units,
         validators=validators,
-        ds=ds,
         **kwargs,
     )
