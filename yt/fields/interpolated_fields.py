@@ -31,6 +31,7 @@ def add_interpolated_field(
     sampling_type: str = "local",
     ds=None,
     units: str | bytes | Unit | None = None,
+    **kwargs,
 ):
     if isinstance(name, tuple) and ftype is not None:
         msg = "Do not specify ftype when providing a full field tuple"
@@ -44,7 +45,9 @@ def add_interpolated_field(
         fieldname = name
 
     if particle_type is not None:
-        raise DeprecationWarning("particle_type is not a valid argument.")
+        # note: particle_type raises an error with add_fields, so it is not
+        # feasible to use a deprecation warning.
+        raise RuntimeError("particle_type is no longer a valid argument.")
 
     if len(table_data.shape) not in _int_class:
         raise RuntimeError(
@@ -86,4 +89,5 @@ def add_interpolated_field(
         units=units,
         validators=validators,
         ds=ds,
+        **kwargs,
     )
