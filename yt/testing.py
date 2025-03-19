@@ -118,7 +118,9 @@ def cubicspline_python(
 
 
 def integrate_kernel(
-    kernelfunc: Callable[[float], float], b: float, hsml: float
+    kernelfunc: Callable[[float | np.ndarray], float | np.ndarray],
+    b: float,
+    hsml: float,
 ) -> float:
     """
     integrates a kernel function over a line passing entirely
