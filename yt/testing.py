@@ -92,7 +92,7 @@ def assert_rel_equal(a1, a2, decimals, err_msg="", verbose=True):
 
 # tested: volume integral is 1.
 def cubicspline_python(
-    x: float | np.ndarray,
+    x: float | NDArray[np.floating],
 ) -> np.ndarray:
     """
     cubic spline SPH kernel function for testing against more
@@ -157,11 +157,11 @@ _zeroperiods = np.array([0.0, 0.0, 0.0])
 
 
 def distancematrix(
-    pos3_i0: np.ndarray,
-    pos3_i1: np.ndarray,
+    pos3_i0: NDArray[np.floating],
+    pos3_i1: NDArray[np.floating],
     periodic: tuple[bool, bool, bool] = (True,) * 3,
-    periods: np.ndarray = _zeroperiods,
-) -> np.ndarray:
+    periods: NDArray[np.floating] = _zeroperiods,
+) -> NDArray[np.floating]:
     """
     Calculates the distances between two arrays of points.
 
