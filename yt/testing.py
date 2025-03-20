@@ -17,6 +17,7 @@ import matplotlib
 import numpy as np
 from more_itertools import always_iterable
 from numpy.random import RandomState
+from numpy.typing import NDArray
 from unyt.exceptions import UnitOperationError
 
 from yt._maintenance.deprecation import issue_deprecation_warning
@@ -118,7 +119,7 @@ def cubicspline_python(
 
 
 def integrate_kernel(
-    kernelfunc: Callable[[float | np.ndarray], float | np.ndarray],
+    kernelfunc: Callable[[float | NDArray[np.floating]], float | NDArray[np.floating]],
     b: float,
     hsml: float,
 ) -> float:
