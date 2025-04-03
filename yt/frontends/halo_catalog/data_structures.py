@@ -340,7 +340,6 @@ class HaloDataset(ParticleDataset):
     def _parse_parameter_file(self):
         for attr in [
             "cosmological_simulation",
-            "cosmology",
             "current_redshift",
             "current_time",
             "dimensionality",
@@ -354,6 +353,14 @@ class HaloDataset(ParticleDataset):
             "unique_identifier",
         ]:
             setattr(self, attr, getattr(self.real_ds, attr))
+
+        cosmo = getattr(self.real_ds, "cosmology", None)
+        if self.cosmological_simulation and cosmo is None:
+            raise RuntimeError(
+                "Detected cosmological_simulation but cosmology parameter is missing."
+            )
+        elif cosmo is not None:
+            self.cosmology = cosmo
 
     def set_code_units(self):
         self._set_code_unit_attributes()
