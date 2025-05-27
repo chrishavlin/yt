@@ -432,7 +432,7 @@ class Dataset(abc.ABC):
 
     def _hash(self):
         s = f"{self.basename};{self.current_time};{self.unique_identifier}"
-        return hashlib.md5(s.encode("utf-8")).hexdigest()
+        return hashlib.md5(s.encode("utf-8"), usedforsecurity=False).hexdigest()
 
     @cached_property
     def checksum(self):
@@ -454,7 +454,7 @@ class Dataset(abc.ABC):
                         break
                     m.update(buf)
 
-        m = hashlib.md5()
+        m = hashlib.md5(usedforsecurity=False)
         if os.path.isdir(self.parameter_filename):
             for root, _, files in os.walk(self.parameter_filename):
                 for fname in files:
