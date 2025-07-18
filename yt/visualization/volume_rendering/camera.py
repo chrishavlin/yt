@@ -69,8 +69,9 @@ class Camera(Orientation):
         Default: 'plane-parallel'
     auto: boolean
         If True, build smart defaults using the data source extent. This
-        can be time-consuming to iterate over the entire dataset to find
-        the positional bounds. Default: False
+        may be time-consuming: if the data source does not define a left
+        and right edge then it will iterate over the entire dataset to
+        find the positional bounds. Default: False
 
     Examples
     --------

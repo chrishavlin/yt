@@ -34,6 +34,12 @@ def create_scene(
         options are 'plane-parallel', 'perspective', and 'fisheye'. See
         :class:`yt.visualization.volume_rendering.lens.Lens` for details.
         Default: 'plane-parallel'
+    auto_camera_extent: boolean, optional
+        If True, build smart defaults using the data source extent. This
+        may be time-consuming: if the data source does not define a left
+        and right edge then it will iterate over the entire dataset to
+        find the positional bounds. Passed to the auto keyword of
+        scene.addCamera(). Default: False
 
     Returns
     -------
