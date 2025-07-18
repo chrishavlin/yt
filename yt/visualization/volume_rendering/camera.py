@@ -5,6 +5,7 @@ import numpy as np
 
 from yt.funcs import ensure_numpy_array, is_sequence
 from yt.units.yt_array import YTArray, YTQuantity
+from yt.utilities.logger import ytLogger as mylog
 from yt.utilities.math_utils import get_rotation_matrix
 from yt.utilities.orientation import Orientation
 
@@ -307,16 +308,29 @@ class Camera(Orientation):
             self.lens = lenses[lens_type]()
         self.lens.set_camera(self)
 
+    @staticmethod
+    def _get_extent_from_data_source(data_source):
+        if hasattr(data_source, "left_edge"):
+            le = data_source.left_edge
+            re = data_source.right_edge
+        elif hasattr(data_source, "domain_left_edge"):
+            le = data_source.domain_left_edge
+            re = data_source.domain_right_edge
+        else:
+            mylog.info(f"Camera: computing the spatial extent of {data_source}")
+            result = data_source.quantities.extrema(["x", "y", "z"])
+            result = np.hstack(result)
+            le, re = result[:, 0], result[:, 1]
+
+        return le, re
+
     def set_defaults_from_data_source(self, data_source):
         """Resets the camera attributes to their default values"""
 
-        position = data_source.ds.domain_right_edge
+        le, re = self._get_extent_from_data_source(data_source)
+        width = re - le
+        position = (data_source.ds.domain_right_edge + re) / 2
 
-        width = 1.5 * data_source.ds.domain_width.max()
-        (xmi, xma), (ymi, yma), (zmi, zma) = data_source.quantities["Extrema"](
-            ["x", "y", "z"]
-        )
-        width = np.sqrt((xma - xmi) ** 2 + (yma - ymi) ** 2 + (zma - zmi) ** 2)
         focus = data_source.get_field_parameter("center")
 
         if is_sequence(width) and len(width) > 1 and isinstance(width[1], str):

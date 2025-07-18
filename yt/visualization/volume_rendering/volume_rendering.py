@@ -5,7 +5,9 @@ from .api import MeshSource, Scene, create_volume_source
 from .utils import data_source_or_all
 
 
-def create_scene(data_source, field=None, lens_type="plane-parallel"):
+def create_scene(
+    data_source, field=None, lens_type="plane-parallel", auto_camera_extent=False
+):
     r"""Set up a scene object with sensible defaults for use in volume
     rendering.
 
@@ -65,7 +67,7 @@ def create_scene(data_source, field=None, lens_type="plane-parallel"):
         source = create_volume_source(data_source, field=field)
 
     sc.add_source(source)
-    sc.add_camera(data_source=data_source, lens_type=lens_type)
+    sc.add_camera(data_source=data_source, lens_type=lens_type, auto=auto_camera_extent)
     return sc
 
 
