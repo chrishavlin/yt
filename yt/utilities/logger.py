@@ -1,6 +1,7 @@
 import logging
 import sys
 from collections.abc import Callable
+from contextlib import contextmanager
 
 from yt.utilities.configure import YTConfig, configuration_callbacks
 
@@ -8,7 +9,8 @@ _yt_sh: logging.StreamHandler | None = None
 _original_emitter: Callable[[logging.LogRecord], None] | None = None
 
 
-def set_log_level(level):
+@contextmanager
+def set_log_level(level: int | str):
     """
     Select which minimal logging level should be displayed.
 
@@ -23,8 +25,30 @@ def set_log_level(level):
         30 or "warning"
         40 or "error"
         50 or "critical"
+
+    Examples
+    --------
+
+    >>> import yt
+    >>> yt.set_log_level(20)
+
+    You can also use this function as a context manager
+    to temporarily set the log level during some operation. For
+    example the following:
+
+    >>> import yt
+    >>> with yt.set_log_level(99):
+    >>>    ds = yt.load("IsolatedGalaxy/galaxy0030/galaxy0030")
+    >>>    _ = ds.index
+    >>>
+    >>> with yt.set_log_level('DEBUG'):
+    >>>    sp = ds.sphere(ds.domain_center, 1)
+    >>> _ = yt.SlicePlot(ds, 'x', ('gas', 'density'))
+
     """
     # this is a user-facing interface to avoid importing from yt.utilities in user code.
+
+    old_level = ytLogger.level
 
     if isinstance(level, str):
         level = level.upper()
@@ -33,6 +57,12 @@ def set_log_level(level):
         level = 1
     ytLogger.setLevel(level)
     ytLogger.debug("Set log level to %s", level)
+
+    try:
+        yield
+    finally:
+        ytLogger.debug("Reset log level to %s", old_level)
+        ytLogger.setLevel(old_level)
 
 
 ytLogger = logging.getLogger("yt")
