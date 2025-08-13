@@ -1,4 +1,5 @@
 import numpy as np
+import unyt
 from more_itertools import always_iterable
 
 from yt.funcs import mylog
@@ -164,11 +165,16 @@ class TransferFunction:
         from yt._maintenance.numpy2_compat import trapezoid
 
         vals = np.zeros(self.x.shape, "float64")
-        nu = clight / (wavelength * 1e-8)
+
+        if not isinstance(wavelength, unyt.unyt_array):
+            # incoming wavelength is in 100s of pm
+            wavelength = unyt.unyt_array(wavelength * 1e-10, "m")
+
+        nu = clight / wavelength  # frequency
         nu = nu[::-1]
 
         for i, logT in enumerate(self.x):
-            T = 10**logT
+            T = unyt.unyt_quantity(10**logT, "K")
             # Black body at this nu, T
             Bnu = ((2.0 * hcgs * nu**3) / clight**2.0) / (
                 np.exp(hcgs * nu / (kboltz * T)) - 1.0
@@ -973,6 +979,11 @@ class PlanckTransferFunction(MultiVariateTransferFunction):
     really not terribly accurate anyway, feel free to adjust this to change
     the relative amount of reddening.  Maybe in some future version this
     will be unitful.
+
+    Parameters
+    ----------
+    T_bounds: log10 temperature bounds
+    rho_bounds:
     """
 
     def __init__(
@@ -1004,8 +1015,10 @@ class PlanckTransferFunction(MultiVariateTransferFunction):
         self.grey_opacity = False
 
     def _normalize(self):
+        # normalize RGB temperature channels by the max RGB at each temperature
         fmax = np.array([f.y for f in self.tables[:3]])
         normal = fmax.max(axis=0)
+        normal[normal == 0] = 1e-30
         for f in self.tables[:3]:
             f.y = f.y / normal
 
