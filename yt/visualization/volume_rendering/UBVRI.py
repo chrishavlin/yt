@@ -1,6 +1,7 @@
 import numpy as np
+from unyt import unyt_array
 
-johnson_filters = {
+_johnson_filters = {
     "B": {
         "wavelen": np.array(
             [
@@ -681,7 +682,12 @@ johnson_filters = {
     },
 }
 
-for vals in johnson_filters.values():
-    wavelen = vals["wavelen"]
-    trans = vals["trans"]
-    vals["Lchar"] = wavelen[np.argmax(trans)]
+johnson_filters = {}
+
+for channel, vals in _johnson_filters.items():
+    wavelen = unyt_array(vals["wavelen"], "angstrom")
+    johnson_filters[channel] = {
+        "wavelen": wavelen,
+        "trans": vals["trans"],
+        "Lchar": wavelen[np.argmax(vals["trans"])],
+    }

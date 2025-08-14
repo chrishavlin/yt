@@ -162,12 +162,29 @@ class TransferFunction:
         )
 
     def add_filtered_planck(self, wavelength, trans):
+        """
+
+        Parameters
+        ----------
+        wavelength: ArrayLike
+            if not a unyt array, assumed units are angstroms
+        trans: npt.NDArray
+            transmission coefficients at each wavelength
+
+        Notes
+        -----
+
+        IMPORTANT: this function assumes the current
+        transfer function is initialized for a temperature field
+        in log space (and in degrees K)!
+
+        """
         from yt._maintenance.numpy2_compat import trapezoid
 
         vals = np.zeros(self.x.shape, "float64")
 
         if not isinstance(wavelength, unyt.unyt_array):
-            # incoming wavelength is in 100s of pm
+            # assume incoming wavelength is Angstroms
             wavelength = unyt.unyt_array(wavelength * 1e-10, "m")
 
         nu = clight / wavelength  # frequency
@@ -176,9 +193,9 @@ class TransferFunction:
         for i, logT in enumerate(self.x):
             T = unyt.unyt_quantity(10**logT, "K")
             # Black body at this nu, T
-            Bnu = ((2.0 * hcgs * nu**3) / clight**2.0) / (
-                np.exp(hcgs * nu / (kboltz * T)) - 1.0
-            )
+            exp_fac = hcgs * nu / (kboltz * T)
+            print(exp_fac.max(), np.exp(exp_fac).max())
+            Bnu = ((2.0 * hcgs * nu**3) / clight**2.0) / (np.exp(exp_fac) - 1.0)
             # transmission
             f = Bnu * trans[::-1]
             # integrate transmission over nu
@@ -990,26 +1007,34 @@ class PlanckTransferFunction(MultiVariateTransferFunction):
         self, T_bounds, rho_bounds, nbins=256, red="R", green="V", blue="B", anorm=1e6
     ):
         MultiVariateTransferFunction.__init__(self)
-        mscat = -1
+        mscat = -1.0
         from .UBVRI import johnson_filters
 
         for i, f in enumerate([red, green, blue]):
             jf = johnson_filters[f]
             tf = TransferFunction(T_bounds)
+            mylog.debug("Adding filtered planck for %s channel ", f)
             tf.add_filtered_planck(jf["wavelen"], jf["trans"])
-            self.add_field_table(tf, 0, 1)
-            self.link_channels(i, i)  # 0 => 0, 1 => 1, 2 => 2
+            self.add_field_table(tf, field_id=0, weight_field_id=1)
+            self.link_channels(table_id=i, channels=i)  # 0 => 0, 1 => 1, 2 => 2
             mscat = max(mscat, jf["Lchar"] ** -4)
 
         for i, f in enumerate([red, green, blue]):
             # Now we set up the scattering
-            scat = (johnson_filters[f]["Lchar"] ** -4 / mscat) * anorm
+            Lchar = johnson_filters[f]["Lchar"]
+            scat = (Lchar**-4 / mscat) * anorm
             tf = TransferFunction(rho_bounds)
-            mylog.debug("Adding: %s with relative scattering %s", f, scat)
+            mylog.debug(
+                "Adding: %s with relative scattering %s for Lchar %s and mscat %s",
+                f,
+                scat,
+                Lchar,
+                mscat,
+            )
             tf.y *= 0.0
-            tf.y += scat
-            self.add_field_table(tf, 1, weight_field_id=1)
-            self.link_channels(i + 3, i + 3)
+            tf.y += scat.d
+            self.add_field_table(tf, field_id=1, weight_field_id=1)
+            self.link_channels(table_id=i + 3, channels=i + 3)
 
         self._normalize()
         self.grey_opacity = False

@@ -26,6 +26,7 @@ from yt.visualization.image_writer import apply_colormap
 from .transfer_function_helper import TransferFunctionHelper
 from .transfer_functions import (
     ColorTransferFunction,
+    MultiVariateTransferFunction,
     ProjectionTransferFunction,
     TransferFunction,
 )
@@ -285,6 +286,7 @@ class VolumeSource(RenderSource, abc.ABC):
             TransferFunction,
             ColorTransferFunction,
             ProjectionTransferFunction,
+            MultiVariateTransferFunction,
             type(None),
         )
         if not isinstance(value, valid_types):
