@@ -161,15 +161,30 @@ class TransferFunction:
         )
 
     def add_filtered_planck(self, wavelength, trans):
+        """set the transfer function with a filtered Planck function
+
+        Parameters
+        ----------
+            wavelength :
+                wavelength in units of angstrom
+            trans :
+                transmission coefficients
+
+        Notes
+        -----
+        This function assumes that you are building a transfer function
+        for temperature in logspace.
+        """
         from yt._maintenance.numpy2_compat import trapezoid
 
         vals = np.zeros(self.x.shape, "float64")
-        nu = clight / (wavelength * 1e-8)
+        nu = clight / (wavelength * 1e-8)  # frequency in Hz
         nu = nu[::-1]
 
         for i, logT in enumerate(self.x):
             T = 10**logT
             # Black body at this nu, T
+            # low T will result in overflow warnings here
             Bnu = ((2.0 * hcgs * nu**3) / clight**2.0) / (
                 np.exp(hcgs * nu / (kboltz * T)) - 1.0
             )
@@ -966,18 +981,32 @@ class PlanckTransferFunction(MultiVariateTransferFunction):
     This sets up a planck function for multivariate emission and
     absorption.  We assume that the emission is black body, which is then
     convolved with appropriate Johnson filters for *red*, *green* and
-    *blue*.  *T_bounds* and *rho_bounds* define the limits of tabulated
-    emission and absorption functions.  *anorm* is a "fudge factor" that
-    defines the somewhat arbitrary normalization to the scattering
-    approximation: because everything is done largely unit-free, and is
-    really not terribly accurate anyway, feel free to adjust this to change
-    the relative amount of reddening.  Maybe in some future version this
-    will be unitful.
+    *blue*.
+
+    Parameters
+    ----------
+    T_bounds : tuple
+        log-temperature limits of tabulated emission and absorption functions
+    rho_bounds : tuple
+        log-density limits of tabulated emission and absorption functions
+    red : str
+        the name of the red channel in the filter tables, default "R"
+    green : str
+        the name of the green channel in the filter tables, default "V"
+    blue : str
+        the name of the blue channel in the filter tables, default "B"
+    anorm : float
+        Default 1e-6. anorm is a "fudge factor" that defines the somewhat arbitrary normalization
+        to the scattering approximation: because everything is done largely
+        unit-free, and is really not terribly accurate anyway, feel free to
+        adjust this to change the relative amount of reddening.  Maybe in some
+        future version this will be unitful.
     """
 
     def __init__(
         self, T_bounds, rho_bounds, nbins=256, red="R", green="V", blue="B", anorm=1e6
     ):
+        # TODO: nbins is not used. remove it or make use of it.
         MultiVariateTransferFunction.__init__(self)
         mscat = -1
         from .UBVRI import johnson_filters
@@ -985,6 +1014,7 @@ class PlanckTransferFunction(MultiVariateTransferFunction):
         for i, f in enumerate([red, green, blue]):
             jf = johnson_filters[f]
             tf = TransferFunction(T_bounds)
+            # Note: jf["wavlen"] is a plain np array in angstroms
             tf.add_filtered_planck(jf["wavelen"], jf["trans"])
             self.add_field_table(tf, 0, 1)
             self.link_channels(i, i)  # 0 => 0, 1 => 1, 2 => 2
@@ -1004,6 +1034,8 @@ class PlanckTransferFunction(MultiVariateTransferFunction):
         self.grey_opacity = False
 
     def _normalize(self):
+        # at each temperature, normalize every channel by the maximum
+        # transmission across all channels.
         fmax = np.array([f.y for f in self.tables[:3]])
         normal = fmax.max(axis=0)
         for f in self.tables[:3]:

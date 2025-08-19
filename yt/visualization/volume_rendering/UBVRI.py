@@ -1,5 +1,8 @@
 import numpy as np
 
+# the following table describes a spectral filter that maps
+# wavelength in angstrom and transmission coefficients
+# to visible spectrum.
 johnson_filters = {
     "B": {
         "wavelen": np.array(
