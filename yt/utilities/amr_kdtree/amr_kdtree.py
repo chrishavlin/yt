@@ -349,7 +349,7 @@ class AMRKDTree(ParallelAnalysisInterface):
                     # huh. why neg values for density
                     n_neg = np.sum(v <= 0)
                     if n_neg > 0:
-                        print(n_neg)
+                        print(f"{n_neg=} in vcd for {field}")
                     v[v <= 0] = np.nan
                     dds.append(np.log10(v))
                 else:

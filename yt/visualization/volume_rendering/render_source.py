@@ -128,7 +128,7 @@ def validate_volume(f):
         if obj.weight_field is not None:
             print("adding weight field to volume")
             fields.append(obj.weight_field)
-            log_fields.append(obj.log_field)
+            log_fields.append(obj.log_weight_field)
         if not obj._volume_valid:
             print("resetting fields")
             obj.volume.set_fields(
@@ -238,7 +238,7 @@ class VolumeSource(RenderSource, abc.ABC):
     _image = None
     data_source = None
 
-    def __init__(self, data_source, field):
+    def __init__(self, data_source, field, weight_field=None):
         r"""Initialize a new volumetric source for rendering."""
         super().__init__()
         self.data_source = data_source_or_all(data_source)
@@ -257,7 +257,12 @@ class VolumeSource(RenderSource, abc.ABC):
         self._field = field
         self._log_field = self.data_source.ds.field_info[field].take_log
         self._use_ghost_zones = False
-        self._weight_field = None
+        self._weight_field = weight_field
+        self._log_weight_field = True
+        if weight_field:
+            self._log_weight_field = self.data_source.ds.field_info[
+                weight_field
+            ].take_log
 
         self.tfh = TransferFunctionHelper(self.data_source.pf)
         self.tfh.set_field(self.field)
@@ -367,6 +372,17 @@ class VolumeSource(RenderSource, abc.ABC):
         self._log_field = value
 
     @property
+    def log_weight_field(self):
+        """Whether or not the field rendering is computed in log space"""
+        return self._log_weight_field
+
+    @log_weight_field.setter
+    @invalidate_volume
+    def log_weight_field(self, value):
+        self.transfer_function = None
+        self._log_weight_field = value
+
+    @property
     def use_ghost_zones(self):
         """Whether or not ghost zones are used to estimate vertex-centered data
         values at grid boundaries"""
@@ -432,6 +448,10 @@ class VolumeSource(RenderSource, abc.ABC):
             will be done in linear space.
         """
         self.log_field = log_field
+        return self
+
+    def set_weight_log(self, log_field):
+        self.log_weight_field = log_field
         return self
 
     def set_weight_field(self, weight_field):
