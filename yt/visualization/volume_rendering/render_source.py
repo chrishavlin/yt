@@ -26,6 +26,7 @@ from yt.visualization.image_writer import apply_colormap
 from .transfer_function_helper import TransferFunctionHelper
 from .transfer_functions import (
     ColorTransferFunction,
+    MultiVariateTransferFunction,
     ProjectionTransferFunction,
     TransferFunction,
 )
@@ -125,9 +126,11 @@ def validate_volume(f):
         fields = [obj.field]
         log_fields = [obj.log_field]
         if obj.weight_field is not None:
+            print("adding weight field to volume")
             fields.append(obj.weight_field)
             log_fields.append(obj.log_field)
         if not obj._volume_valid:
+            print("resetting fields")
             obj.volume.set_fields(
                 fields, log_fields, no_ghost=(not obj.use_ghost_zones)
             )
@@ -285,6 +288,7 @@ class VolumeSource(RenderSource, abc.ABC):
             TransferFunction,
             ColorTransferFunction,
             ProjectionTransferFunction,
+            MultiVariateTransferFunction,
             type(None),
         )
         if not isinstance(value, valid_types):
