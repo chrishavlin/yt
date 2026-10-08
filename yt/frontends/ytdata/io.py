@@ -215,7 +215,7 @@ class IOHandlerYTDataContainerHDF5(BaseIOHandler):
             index_mask = slice(data_file.start, data_file.end)
             for ptype, field_list in sorted(ptf.items()):
                 if selector is None or getattr(selector, "is_all_data", False):
-                    mask = index_mask
+                    mask = slice(None)
                 else:
                     units = _get_position_array_units(ptype, f, "x")
                     x, y, z = (
@@ -231,7 +231,7 @@ class IOHandlerYTDataContainerHDF5(BaseIOHandler):
                         continue
 
                 for field in field_list:
-                    data = f[ptype][field][mask].astype("float64", copy=False)
+                    data = f[ptype][field][index_mask][mask].astype("float64", copy=False)
                     data_return[ptype, field] = data
 
         return data_return
